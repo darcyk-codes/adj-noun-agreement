@@ -261,13 +261,13 @@ function groupNouns(rows){
   });
 
   if (conflicts.length){
-    const msg = conflicts.slice(0,6).map(c=>`• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('
-');
-    alert('Some nouns had conflicting English glosses. Using the first value found.
-' + msg + (conflicts.length>6?'
-…':''));
-  }
-  return groups;
+ 	const msg = conflicts
+   		.slice(0, 6)
+   		.map(c => `• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`)
+  		.join('\n');
+ 	alert('Some nouns had conflicting English glosses. Using the first value found.\n' + msg +(conflicts.length > 6 ? '\n…' : '')
+ );  
+return groups;
 }
 
 /* ---------- State ---------- */
@@ -317,7 +317,7 @@ function centerOffsetFor(trackEl){
   return { ITEM_H, centerOffset: (reelH/2 - ITEM_H/2) };
 }
 function buildReel(trackEl, items, renderFn){
-  const repeated=[]; for (let r=0;r<5;r++){ for (let i=0;i<items.length;i++){ repeated.push(`<div class=\"reelItem\">${renderFn(items[i])}</div>`); } }
+  const repeated=[]; for (let r=0;r<5;r++){ for (let i=0;i<items.length;i++){ repeated.push(`<div class="reelItem">${renderFn(items[i])}</div>`); } }
   trackEl.innerHTML = repeated.join('');
 }
 function renderByPos(trackEl, len, pos){
@@ -461,7 +461,7 @@ buttons.fileInput.addEventListener('change', async (e)=>{
   buildAll();
 });
 
-/* Heuristic decoder: pick the encoding with the fewest replacement chars ( ); prefer ones that keep č/š/ž */
+/* Heuristic decoder: pick the encoding with the fewest replacement chars (\uFFFD); prefer ones that keep č/š/ž */
 async function readFileAsTextSmart(file, encodings=['utf-8']){
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -471,7 +471,7 @@ async function readFileAsTextSmart(file, encodings=['utf-8']){
     try{
       const dec = new TextDecoder(enc, {fatal:false});
       const text = dec.decode(bytes);
-      const replacements = (text.match(/ /g)||[]).length;
+      const replacements = (text.match(/\uFFFD/g) || []).length;
       const hasDia = dia.test(text);
       const score = replacements;
       if (score < best.score || (score===best.score && hasDia && !best.hasDiacritics)){
@@ -491,11 +491,11 @@ function parseCSV(text){
     if(c==='"'){ if(inQ&&n==='"'){ val+='"'; i++; } else inQ=!inQ; }
     else if(c===','&&!inQ){ row.push(val); val=''; }
     else if((c==='
-'||c==='
-')&&!inQ){ if(val.length||row.length){ row.push(val); out.push(row); row=[]; val=''; } if(c==='
-'&&n==='
-') i++; }
-    else { val+=c; }
+else if ((c === '\n' || c === '\r') && !inQ) {
+   if (val.length || row.length) { row.push(val); out.push(row); row=[]; val=''; }
+   if (c === '\r' && n === '\n') i++;
+ }
+else { val+=c; }
   }
   if(val.length||row.length){ row.push(val); out.push(row); }
   return out;
