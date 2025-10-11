@@ -3,12 +3,6 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- iOS app name -->
-<meta name="apple-mobile-web-app-title" content="Possessive Match">
-
-<!-- 180×180 icon is the iOS sweet spot -->
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-
 <title>Possessive Match — Slovene (m/f/n)</title>
 
 <!-- PWA basics -->
@@ -66,7 +60,8 @@
   .grid{display:grid;gap:12px}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .card{border-radius:12px;padding:14px;background:linear-gradient(180deg,#1b2130,#151a26);border:1px solid #23293a}
-  .big{font-size:24px;font-weight:800;letter-spacing:.3px}
+  /* Increased to 30px as requested */
+  .big{font-size:30px;font-weight:800;letter-spacing:.3px}
   .muted{color:var(--muted);font-size:13px}
 
   .fileRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -285,8 +280,8 @@ function groupNouns(rows){
 /* ---------- State ---------- */
 let showHints = true;             // single toggle controls chips & feedback detail
 
-let ADJ_GROUPS = shuffle(groupAdjectives(ADJECTIVES_RAW)); // randomized order
-let NOUN_GROUPS = groupNouns(NOUNS_START);
+let ADJ_GROUPS = shuffle(groupAdjectives(ADJECTIVES_RAW)); // randomized adjectives
+let NOUN_GROUPS = shuffle(groupNouns(NOUNS_START));        // ★ randomized nouns
 let adjLen = ADJ_GROUPS.length;
 let nounLen = NOUN_GROUPS.length;
 let adjPos = 2*adjLen + 0;  // absolute position inside 5x list
@@ -528,8 +523,8 @@ buttons.fileInput.addEventListener('change', async (e)=>{
     csvWarn.classList.add('show');
   }
 
-  // group nouns (enforce english consistency)
-  NOUN_GROUPS = groupNouns(parsed);
+  // group nouns (enforce english consistency) and ★ randomize order after upload
+  NOUN_GROUPS = shuffle(groupNouns(parsed));
   nounLen = NOUN_GROUPS.length;
   nounPos = 2*nounLen + 0;
   buildAll();
