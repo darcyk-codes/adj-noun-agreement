@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Possessive Match — Slovenian Nouns</title>
+  <title>Possessive Match — Slovene Nouns</title>
 
   <!-- PWA basics -->
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -20,7 +20,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>🎰 Possessive Match — Slovene (m/f/n)</h1>
+      <h1>Possessive Match — Slovene Nouns</h1>
       <div class="controls">
         <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
         <button class="btn primary bigbtn" id="checkBtn">Check</button>
@@ -31,7 +31,7 @@
     <div class="panel">
       <div class="two">
         <div class="grid">
-          <div class="sectionTitle">English Prompt</div>
+          <div class="sectionTitle">Prompt</div>
           <div class="card">
             <div class="big" id="promptText">Tap “New Prompt”</div>
             <div class="muted" id="promptHint"></div>
@@ -50,15 +50,15 @@
     <div class="layout">
       <!-- Adjective reel -->
       <div class="panel">
-        <!-- HEADER ROW with sort button (moved here) -->
         <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div class="sectionTitle">Possessive Adjective (Slovene)</div>
+          <div class="sectionTitle">Possessive Adjective</div>
           <button class="btn" id="toggleAdjSort">Adj order: Random</button>
         </div>
 
         <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
           <div class="reelTrack" id="adjTrack"></div>
         </div>
+
         <div class="reelFooter">
           <div class="badgeRow">
             <span class="badge" id="adjBadge">Selected: —</span>
@@ -70,15 +70,15 @@
           </div>
         </div>
 
-        <!-- Keep Hints below the adjective reel (sort buttons removed from here) -->
+        <!-- Hints + Mode toggle live together (unchanged behavior for hints) -->
         <div class="belowReelControls">
           <button class="btn" id="toggleHints">Show Hints: ON</button>
+          <button class="btn" id="toggleMode" aria-pressed="false">Prompt: English → Slovene</button>
         </div>
       </div>
 
       <!-- Noun reel -->
       <div class="panel">
-        <!-- HEADER ROW with sort button (moved here) -->
         <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div class="sectionTitle">Noun (from your CSV)</div>
           <button class="btn" id="toggleNounSort">Noun order: Random</button>
@@ -87,6 +87,7 @@
         <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
           <div class="reelTrack" id="nounTrack"></div>
         </div>
+
         <div class="reelFooter">
           <div class="badgeRow">
             <span class="badge" id="nounBadge">Selected: —</span>
@@ -114,7 +115,9 @@
           <span class="badge" id="fileName"></span>
           <span class="meta" id="encodingLabel"></span>
         </div>
-        <div class="utf8-note">⚠️ Save your CSV as <strong>CSV UTF-8 (Comma delimited)</strong> to preserve Slovene characters like <strong>č, š, ž</strong>.</div>
+        <div class="utf8-note">
+          ⚠️ Save your CSV as <strong>CSV UTF-8 (Comma delimited)</strong> to preserve Slovene characters like <strong>č, š, ž</strong>.
+        </div>
         <div class="warn" id="csvWarn">
           ⚠️ It looks like some Slovene characters (č, š, ž) didn’t import correctly. Please re-export your file as <strong>CSV UTF-8</strong> and upload again.
         </div>
@@ -126,7 +129,7 @@
     </div>
   </div>
 
-  <!-- App JS -->
+  <!-- App logic -->
   <script src="./app.js"></script>
 </body>
 </html>
