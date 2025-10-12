@@ -1,454 +1,132 @@
-/* Language mode that ONLY swaps prompt language & reel labels.
-   Fixes:
-   - Color-coded hint "bubbles" back (semantic classes on #adjKeys/#nounKeys).
-   - Provided lists loader robust to relative path differences.
-   - Reels re-sync to the item in the center band; click centers + selects; scroll selects.
-*/
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Possessive Match — Slovenian Nouns</title>
 
-(() => {
-  const $ = (sel) => document.querySelector(sel);
+  <!-- PWA basics -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="icon" href="./icons/icon-192.png" />
 
-  // ---------- State ----------
-  let mode          = localStorage.getItem('mode') || 'en2sl'; // 'en2sl' or 'sl2en'
-  let hintsOn       = localStorage.getItem('hintsOn') === 'true';
-  let adjSortMode   = localStorage.getItem('adjSort')  || 'random'; // 'alpha' | 'random'
-  let nounSortMode  = localStorage.getItem('nounSort') || 'random'; // 'alpha' | 'random'
+  <!-- Styles -->
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>🎰 Possessive Match — Slovene (m/f/n)</h1>
+      <div class="controls">
+        <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
+        <button class="btn primary bigbtn" id="checkBtn">Check</button>
+      </div>
+    </header>
 
-  let possAdj = [];  // { id, sl, en }
-  let nouns   = [];  // { id, sl, en, gender, number }
+    <!-- Prompt + Feedback -->
+    <div class="panel">
+      <div class="two">
+        <div class="grid">
+          <div class="sectionTitle">English Prompt</div>
+          <div class="card">
+            <div class="big" id="promptText">Tap “New Prompt”</div>
+            <div class="muted" id="promptHint"></div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="sectionTitle">Feedback</div>
+          <div class="card">
+            <div class="big" id="resultLine">—</div>
+            <div class="muted" id="explain">Spin both reels to match the prompt, then press “Check”.</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  let adjOrder  = []; // display order (IDs)
-  let nounOrder = [];
+    <div class="layout">
+      <!-- Adjective reel -->
+      <div class="panel">
+        <!-- HEADER ROW with sort button (moved here) -->
+        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div class="sectionTitle">Possessive Adjective (Slovene)</div>
+          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
+        </div>
 
-  let selectedAdjId  = null;
-  let selectedNounId = null;
+        <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
+          <div class="reelTrack" id="adjTrack"></div>
+        </div>
+        <div class="reelFooter">
+          <div class="badgeRow">
+            <span class="badge" id="adjBadge">Selected: —</span>
+            <div class="keys" id="adjKeys"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="adjPrev">◀</button>
+            <button class="btn ghost" id="adjNext">▶</button>
+          </div>
+        </div>
 
-  let expected = { adjId: null, nounId: null };
+        <!-- Keep Hints below the adjective reel (sort buttons removed from here) -->
+        <div class="belowReelControls">
+          <button class="btn" id="toggleHints">Show Hints: ON</button>
+        </div>
+      </div>
 
-  // Demo data
-  const DEMO_NOUNS = [
-    { sl: 'hiša',   en: 'house',    gender: 'f', number: 'sg' },
-    { sl: 'mesto',  en: 'city',     gender: 'n', number: 'sg' },
-    { sl: 'mački',  en: 'kittens',  gender: 'm', number: 'pl' },
-    { sl: 'knjiga', en: 'book',     gender: 'f', number: 'sg' },
-    { sl: 'otroci', en: 'children', gender: 'm', number: 'pl' },
-  ];
-  const DEMO_ADJ = [
-    { sl: 'moja',    en: 'my' },
-    { sl: 'tvoja',   en: 'your' },
-    { sl: 'njegova', en: 'his' },
-    { sl: 'njena',   en: 'her' },
-    { sl: 'naša',    en: 'our' },
-    { sl: 'vaša',    en: 'your(pl)' },
-    { sl: 'njihova', en: 'their' },
-  ];
+      <!-- Noun reel -->
+      <div class="panel">
+        <!-- HEADER ROW with sort button (moved here) -->
+        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div class="sectionTitle">Noun (from your CSV)</div>
+          <button class="btn" id="toggleNounSort">Noun order: Random</button>
+        </div>
 
-  function ensureDataReady() {
-    if (nouns.length === 0)  nouns   = DEMO_NOUNS.map((n, i) => ({ id: i, ...n }));
-    if (possAdj.length === 0) possAdj = DEMO_ADJ.map((a, i) => ({ id: i, ...a }));
-  }
+        <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
+          <div class="reelTrack" id="nounTrack"></div>
+        </div>
+        <div class="reelFooter">
+          <div class="badgeRow">
+            <span class="badge" id="nounBadge">Selected: —</span>
+            <div class="keys" id="nounKeys"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="nounPrev">◀</button>
+            <button class="btn ghost" id="nounNext">▶</button>
+          </div>
+        </div>
 
-  // ---------- DOM Ready ----------
-  window.addEventListener('DOMContentLoaded', () => {
-    // Elements
-    const promptText     = $('#promptText');
-    const promptHint     = $('#promptHint');
-    const resultLine     = $('#resultLine');
-    const explain        = $('#explain');
+        <!-- Provided lists -->
+        <div class="fileRow" style="margin-top:10px">
+          <select id="providedSelect" class="btn" style="min-width:260px" disabled>
+            <option>Loading provided lists…</option>
+          </select>
+          <button class="btn" id="loadProvidedBtn" disabled>Load Selected</button>
+          <span class="meta" id="providedHint"></span>
+        </div>
 
-    const toggleHintsBtn = $('#toggleHints');
-    const toggleModeBtn  = $('#toggleMode');
-    const toggleAdjSort  = $('#toggleAdjSort');
-    const toggleNounSort = $('#toggleNounSort');
+        <!-- Custom upload -->
+        <div class="fileRow" style="margin-top:10px">
+          <input type="file" id="fileInput" accept=".csv" />
+          <label for="fileInput" class="btn">Upload Nouns (CSV)</label>
+          <span class="badge" id="fileName"></span>
+          <span class="meta" id="encodingLabel"></span>
+        </div>
+        <div class="utf8-note">⚠️ Save your CSV as <strong>CSV UTF-8 (Comma delimited)</strong> to preserve Slovene characters like <strong>č, š, ž</strong>.</div>
+        <div class="warn" id="csvWarn">
+          ⚠️ It looks like some Slovene characters (č, š, ž) didn’t import correctly. Please re-export your file as <strong>CSV UTF-8</strong> and upload again.
+        </div>
+        <div class="note" style="margin-top:8px">
+          CSV header required: <code>noun,gender,number,english</code> · gender: <code>m|f|n</code> · number: <code>sg|pl</code><br/>
+          Examples: <code>hiša,f,sg,house</code> · <code>mački,m,pl,kittens</code> · <code>mesto,n,sg,city</code>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    const adjReel  = $('#adjReel');
-    const nounReel = $('#nounReel');
-    const adjTrack = $('#adjTrack');
-    const nounTrack= $('#nounTrack');
-
-    const adjPrevBtn = $('#adjPrev');
-    const adjNextBtn = $('#adjNext');
-    const nounPrevBtn= $('#nounPrev');
-    const nounNextBtn= $('#nounNext');
-
-    const adjBadge = $('#adjBadge');
-    const nounBadge= $('#nounBadge');
-    const adjKeys  = $('#adjKeys');
-    const nounKeys = $('#nounKeys');
-
-    const newPromptBtn   = $('#newPromptBtn');
-    const checkBtn       = $('#checkBtn');
-
-    const providedSelect = $('#providedSelect');
-    const loadProvidedBtn= $('#loadProvidedBtn');
-    const providedHint   = $('#providedHint');
-
-    const fileInput      = $('#fileInput');
-    const fileNameLabel  = $('#fileName');
-    const encodingLabel  = $('#encodingLabel');
-    const csvWarn        = $('#csvWarn');
-
-    ensureDataReady();
-    possAdj = possAdj.map((a, i) => ({ id: (a.id ?? i), ...a }));
-    nouns   = nouns.map((n, i) => ({ id: (n.id ?? i), ...n }));
-
-    // ---------- Utilities ----------
-    const shuffle = (ids) => {
-      const a = ids.slice();
-      for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-      }
-      return a;
-    };
-    const alphaSortBy = (ids, arr, key) =>
-      ids.slice().sort((ia, ib) => arr[ia][key].localeCompare(arr[ib][key], undefined, {sensitivity:'base'}));
-
-    const centerSelectOn = (reelEl, itemEl) => {
-      if (!itemEl) return;
-      const reelRect = reelEl.getBoundingClientRect();
-      const itemRect = itemEl.getBoundingClientRect();
-      const reelCenter = reelRect.left + reelRect.width/2;
-      const itemCenter = itemRect.left + itemRect.width/2;
-      const delta = (itemCenter - reelCenter);
-      reelEl.scrollBy({ left: delta, behavior: 'smooth' });
-    };
-
-    function buildOrderArrays() {
-      const useEnglish = (mode === 'sl2en');
-      const adjIds  = possAdj.map(a => a.id);
-      const nounIds = nouns.map(n => n.id);
-      adjOrder  = (adjSortMode  === 'alpha') ? alphaSortBy(adjIds,  possAdj, useEnglish ? 'en' : 'sl') : shuffle(adjIds);
-      nounOrder = (nounSortMode === 'alpha') ? alphaSortBy(nounIds, nouns,   useEnglish ? 'en' : 'sl') : shuffle(nounIds);
-    }
-
-    const labelAdj  = (id) => (mode === 'sl2en' ? (possAdj.find(a=>a.id===id)?.en||'') : (possAdj.find(a=>a.id===id)?.sl||''));
-    const labelNoun = (id) => (mode === 'sl2en' ? (nouns.find(n=>n.id===id)?.en||'')   : (nouns.find(n=>n.id===id)?.sl||''));
-
-    function renderTrack(trackEl, order, labelFn, currentId, setSelected, reelEl) {
-      trackEl.innerHTML = '';
-      order.forEach((id) => {
-        const div = document.createElement('div');
-        div.className = 'reelItem';
-        div.dataset.id = String(id);
-        div.textContent = labelFn(id);
-        if (id === currentId) div.classList.add('selected');
-        div.addEventListener('click', () => {
-          setSelected(id);
-          // re-render first so 'selected' class is accurate, then center
-          renderReels(); 
-          const picked = trackEl.querySelector(`.reelItem[data-id="${id}"]`);
-          centerSelectOn(reelEl, picked);
-        });
-        trackEl.appendChild(div);
-      });
-    }
-
-    function setBadges() {
-      const useEnglish = (mode === 'sl2en');
-      const a = possAdj.find(x => x.id === selectedAdjId);
-      const n = nouns.find(x => x.id === selectedNounId);
-      adjBadge.textContent  = `Selected: ${a ? (useEnglish ? a.en : a.sl) : '—'}`;
-      nounBadge.textContent = `Selected: ${n ? (useEnglish ? n.en : n.sl) : '—'}`;
-    }
-
-    // ---------- Color-coded hint bubbles ----------
-    function renderHints() {
-      if (!hintsOn) { adjKeys.innerHTML = ''; nounKeys.innerHTML = ''; return; }
-      const n = nouns.find(x => x.id === expected.nounId);
-      const gender = n?.gender ?? '—';
-      const number = n?.number ?? '—';
-
-      nounKeys.innerHTML = '';
-      const g = document.createElement('span');
-      g.className = `bubble gender-${gender}`;
-      g.textContent = `gender: ${gender}`;
-      const num = document.createElement('span');
-      num.className = `bubble number-${number}`;
-      num.textContent = `number: ${number}`;
-      nounKeys.appendChild(g); nounKeys.appendChild(num);
-
-      adjKeys.innerHTML = '';
-      const ag = document.createElement('span');
-      ag.className = 'bubble agree';
-      ag.textContent = `agree with ${gender}/${number}`;
-      adjKeys.appendChild(ag);
-    }
-
-    // ---------- Scroll selection (nearest to center) ----------
-    let scrollRAF = null;
-    function bindScrollSelection(reelEl, trackEl, kind) {
-      reelEl.addEventListener('scroll', () => {
-        if (scrollRAF) cancelAnimationFrame(scrollRAF);
-        scrollRAF = requestAnimationFrame(() => {
-          const reelRect = reelEl.getBoundingClientRect();
-          const centerX = reelRect.left + reelRect.width/2;
-          let bestId = null, bestDist = Infinity;
-          trackEl.querySelectorAll('.reelItem').forEach(el => {
-            const rect = el.getBoundingClientRect();
-            const cx = rect.left + rect.width/2;
-            const d = Math.abs(cx - centerX);
-            if (d < bestDist) { bestDist = d; bestId = Number(el.dataset.id); }
-          });
-          if (bestId != null) {
-            if (kind === 'adj') selectedAdjId = bestId;
-            else selectedNounId = bestId;
-            // re-render to update selection highlight & badges (no centering to avoid loop)
-            renderReels(false);
-          }
-        });
-      }, { passive: true });
-    }
-
-    // ---------- Render reels (optionally skip centering) ----------
-    function renderReels(centerAfter = true) {
-      buildOrderArrays();
-      renderTrack(adjTrack,  adjOrder,  labelAdj,  selectedAdjId,  (id)=>{selectedAdjId=id;},  adjReel);
-      renderTrack(nounTrack, nounOrder, labelNoun, selectedNounId, (id)=>{selectedNounId=id;}, nounReel);
-      setBadges();
-      renderHints();
-
-      if (centerAfter) {
-        // center current selections (first items if null)
-        if (selectedAdjId == null) selectedAdjId = adjOrder[0];
-        if (selectedNounId == null) selectedNounId = nounOrder[0];
-        const adjEl  = adjTrack.querySelector(`.reelItem[data-id="${selectedAdjId}"]`);
-        const nounEl = nounTrack.querySelector(`.reelItem[data-id="${selectedNounId}"]`);
-        centerSelectOn(adjReel, adjEl);
-        centerSelectOn(nounReel, nounEl);
-      }
-    }
-
-    // ---------- Prompt/Check ----------
-    function pickRandom(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
-
-    function generatePrompt() {
-      const noun = pickRandom(nouns);
-      const adj  = pickRandom(possAdj);
-      expected = { adjId: adj.id, nounId: noun.id };
-      selectedAdjId = selectedNounId = null;
-
-      if (mode === 'en2sl') {
-        promptText.textContent = `${adj.en} ${noun.en}`;
-        promptHint.textContent = hintsOn ? 'Select the correct Slovene possessive + noun.' : '';
-      } else {
-        promptText.textContent = `${adj.sl} ${noun.sl}`;
-        promptHint.textContent = hintsOn ? 'Select the correct English possessive + noun.' : '';
-      }
-      resultLine.textContent = '—';
-      explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
-
-      renderReels(); // will center after building
-    }
-
-    function evaluate() {
-      const ok = (selectedAdjId === expected.adjId) && (selectedNounId === expected.nounId);
-      if (ok) {
-        resultLine.textContent = '✅ Correct!';
-        const a = possAdj.find(x => x.id === expected.adjId);
-        const n = nouns.find(x => x.id === expected.nounId);
-        if (mode === 'en2sl') {
-          explain.textContent = `You matched: ${a?.sl || '?'} ${n?.sl || '?'} (for “${a?.en || '?'} ${n?.en || '?'}”).`;
-        } else {
-          explain.textContent = `You matched: ${a?.en || '?'} ${n?.en || '?'} (for “${a?.sl || '?'} ${n?.sl || '?'}”).`;
-        }
-      } else {
-        resultLine.textContent = '❌ Try again';
-        if (hintsOn) {
-          const a = possAdj.find(x => x.id === expected.adjId);
-          const n = nouns.find(x => x.id === expected.nounId);
-          if (mode === 'en2sl') {
-            explain.textContent = `Target was: ${a?.sl || '?'} ${n?.sl || '?'} (English: ${a?.en || '?'} ${n?.en || '?'}).`;
-          } else {
-            explain.textContent = `Target was: ${a?.en || '?'} ${n?.en || '?'} (Slovene: ${a?.sl || '?'} ${n?.sl || '?'}).`;
-          }
-        } else {
-          explain.textContent = 'Hint is OFF. Toggle hints if you want more guidance.';
-        }
-      }
-    }
-
-    // ---------- Provided lists (robust) ----------
-    async function fetchJSONWithFallback(paths) {
-      for (const p of paths) {
-        try {
-          const res = await fetch(p, { cache: 'no-store' });
-          if (res.ok) return await res.json();
-        } catch { /* ignore */ }
-      }
-      throw new Error('404');
-    }
-    async function fetchText(url) {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.text();
-    }
-
-    async function initProvidedLists() {
-      try {
-        // try both ./nouns/manifest.json and nouns/manifest.json (covers GH Pages vs local)
-        const manifest = await fetchJSONWithFallback(['./nouns/manifest.json','nouns/manifest.json']);
-        if (!Array.isArray(manifest) || manifest.length === 0) {
-          providedHint.textContent = 'No provided lists found.';
-          providedSelect.disabled = true;
-          loadProvidedBtn.disabled = true;
-          return;
-        }
-        providedSelect.innerHTML = '';
-        for (const item of manifest) {
-          const opt = document.createElement('option');
-          opt.value = item.file;                // keep as-is; treat relative to index.html
-          opt.textContent = item.label || item.file;
-          providedSelect.appendChild(opt);
-        }
-        providedSelect.disabled = false;
-        loadProvidedBtn.disabled = false;
-        providedHint.textContent = `Loaded ${manifest.length} provided list${manifest.length>1?'s':''}.`;
-      } catch {
-        providedSelect.disabled = true;
-        loadProvidedBtn.disabled = true;
-        providedHint.textContent = 'Provided lists are not configured (manifest not found).';
-      }
-    }
-
-    async function loadProvided(url) {
-      try {
-        providedHint.textContent = 'Loading…';
-        const text = await fetchText(url); // url may be relative or absolute
-        const rows = parseCSVText(text);
-        nouns = rows.map((r, i) => ({ id: i, sl: r.sl, en: r.en, gender: r.gender, number: r.number }));
-        selectedAdjId = selectedNounId = null;
-        expected = { adjId: null, nounId: null };
-        generatePrompt();
-        providedHint.textContent = `Loaded ${nouns.length} nouns from provided list.`;
-      } catch (e) {
-        providedHint.textContent = `Failed to load provided list: ${e.message}`;
-      }
-    }
-
-    // ---------- CSV ----------
-    function parseCSVText(text) {
-      const lines = text.replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
-      if (lines.length === 0) return [];
-      const header = lines[0].split(',').map(s=>s.trim().toLowerCase());
-      const idxNoun = header.indexOf('noun');
-      const idxGender = header.indexOf('gender');
-      const idxNumber = header.indexOf('number');
-      const idxEnglish = header.indexOf('english');
-      if (idxNoun<0 || idxGender<0 || idxNumber<0 || idxEnglish<0) {
-        throw new Error('Missing required columns. Expected: noun,gender,number,english');
-      }
-      const out = [];
-      for (let i=1;i<lines.length;i++){
-        const cols = lines[i].split(',').map(s=>s.trim());
-        if (cols.length < header.length) continue;
-        const sl = cols[idxNoun], en = cols[idxEnglish], gender = cols[idxGender], number = cols[idxNumber];
-        if (!sl || !en) continue;
-        out.push({ sl, en, gender, number });
-      }
-      return out;
-    }
-
-    // ---------- Wiring ----------
-    toggleModeBtn.addEventListener('click', () => {
-      mode = (mode === 'en2sl') ? 'sl2en' : 'en2sl';
-      localStorage.setItem('mode', mode);
-      applyModeUI();
-      renderReels();   // swap labels
-      generatePrompt();// swap prompt language
-    });
-
-    toggleHintsBtn.addEventListener('click', () => {
-      hintsOn = !hintsOn;
-      localStorage.setItem('hintsOn', String(hintsOn));
-      applyModeUI();
-      renderHints();   // update without regenerating prompt
-    });
-
-    toggleAdjSort.addEventListener('click', () => {
-      adjSortMode = (adjSortMode==='alpha') ? 'random' : 'alpha';
-      localStorage.setItem('adjSort', adjSortMode);
-      applyModeUI(); renderReels();
-    });
-
-    toggleNounSort.addEventListener('click', () => {
-      nounSortMode = (nounSortMode==='alpha') ? 'random' : 'alpha';
-      localStorage.setItem('nounSort', nounSortMode);
-      applyModeUI(); renderReels();
-    });
-
-    adjPrevBtn.addEventListener('click', () => { stepSelection('adj', -1); });
-    adjNextBtn.addEventListener('click', () => { stepSelection('adj', +1); });
-    nounPrevBtn.addEventListener('click', () => { stepSelection('noun', -1); });
-    nounNextBtn.addEventListener('click', () => { stepSelection('noun', +1); });
-
-    function stepSelection(kind, delta) {
-      const order = (kind==='adj') ? adjOrder : nounOrder;
-      let selId   = (kind==='adj') ? selectedAdjId : selectedNounId;
-      if (selId == null) selId = order[0];
-      else {
-        const idx = order.indexOf(selId);
-        const next = (idx + delta + order.length) % order.length;
-        selId = order[next];
-      }
-      if (kind==='adj') selectedAdjId = selId; else selectedNounId = selId;
-      renderReels(); // will re-center
-    }
-
-    newPromptBtn.addEventListener('click', generatePrompt);
-    checkBtn.addEventListener('click',  evaluate);
-
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      fileNameLabel.textContent = file.name;
-      encodingLabel.textContent = '(UTF-8 expected)';
-      csvWarn.style.display = 'none';
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const text = String(reader.result);
-          if (text.includes('\ufffd')) csvWarn.style.display = 'block';
-          const rows = parseCSVText(text);
-          nouns = rows.map((r, i) => ({ id: i, sl: r.sl, en: r.en, gender: r.gender, number: r.number }));
-          selectedAdjId = selectedNounId = null;
-          expected = { adjId: null, nounId: null };
-          generatePrompt();
-          providedHint.textContent = `Loaded ${nouns.length} nouns from CSV.`;
-        } catch (err) {
-          providedHint.textContent = 'CSV parse error: ' + err.message;
-          console.error(err);
-        }
-      };
-      reader.readAsText(file, 'utf-8');
-    });
-
-    loadProvidedBtn.addEventListener('click', () => {
-      const url = providedSelect?.value;
-      if (url) loadProvided(url);
-    });
-
-    // Bind scroll selection behavior for both reels
-    bindScrollSelection(adjReel, adjTrack, 'adj');
-    bindScrollSelection(nounReel, nounTrack, 'noun');
-
-    function applyModeUI() {
-      toggleModeBtn.textContent = (mode === 'en2sl') ? 'Prompt: English → Slovene' : 'Prompt: Slovene → English';
-      toggleModeBtn.setAttribute('aria-pressed', String(mode==='sl2en'));
-      toggleHintsBtn.textContent = hintsOn ? 'Show Hints: ON' : 'Show Hints: OFF';
-      toggleHintsBtn.setAttribute('aria-pressed', String(hintsOn));
-      toggleAdjSort.textContent  = `Adj order: ${adjSortMode==='alpha' ? 'A–Z' : 'Random'}`;
-      toggleNounSort.textContent = `Noun order: ${nounSortMode==='alpha' ? 'A–Z' : 'Random'}`;
-    }
-
-    // ---------- Boot ----------
-    initProvidedLists();
-    applyModeUI();
-
-    // default to first entries
-    selectedAdjId  = possAdj[0]?.id ?? null;
-    selectedNounId = nouns[0]?.id ?? null;
-
-    renderReels();
-    generatePrompt();
-  });
-})();
+  <!-- App JS -->
+  <script src="./app.js"></script>
+</body>
+</html>
