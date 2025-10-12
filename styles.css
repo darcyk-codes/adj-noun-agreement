@@ -73,8 +73,9 @@ input[type="file"]{display:none}
 
 /* Controls row under adjective reel */
 .belowReelControls{
-  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-  margin-top:10px; padding-top:8px; border-top:1px dashed #2a3040;
-}
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;}
 
 /* (already present in your file) */
