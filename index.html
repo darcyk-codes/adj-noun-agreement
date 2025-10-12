@@ -50,7 +50,12 @@
     <div class="layout">
       <!-- Adjective reel -->
       <div class="panel">
-        <div class="sectionTitle">Possessive Adjective (Slovene)</div>
+        <!-- HEADER ROW with sort button (moved here) -->
+        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div class="sectionTitle">Possessive Adjective (Slovene)</div>
+          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
+        </div>
+
         <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
           <div class="reelTrack" id="adjTrack"></div>
         </div>
@@ -65,17 +70,20 @@
           </div>
         </div>
 
-        <!-- NEW: Sorting & hints controls under adjective reel -->
+        <!-- Keep Hints below the adjective reel (sort buttons removed from here) -->
         <div class="belowReelControls">
-          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
-          <button class="btn" id="toggleNounSort">Noun order: Random</button>
           <button class="btn" id="toggleHints">Show Hints: ON</button>
         </div>
       </div>
 
       <!-- Noun reel -->
       <div class="panel">
-        <div class="sectionTitle">Noun (from your CSV)</div>
+        <!-- HEADER ROW with sort button (moved here) -->
+        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div class="sectionTitle">Noun (from your CSV)</div>
+          <button class="btn" id="toggleNounSort">Noun order: Random</button>
+        </div>
+
         <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
           <div class="reelTrack" id="nounTrack"></div>
         </div>
