@@ -40,22 +40,26 @@
     @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
 
     .card{border:1px solid var(--subtle);background:linear-gradient(180deg,rgba(31,41,55,.65),rgba(31,41,55,.3));border-radius:var(--radius);padding:12px 16px 18px}
-    .card h2{margin:0 0 10px;font-size:16px;font-weight:700;color:#cbd5e1}
 
-    .reel{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--muted) transparent;padding:8px;border:1px dashed var(--subtle);border-radius:12px;min-height:64px;align-items:center;background:rgba(17,24,39,.4)}
-    .chip{padding:8px 10px;border-radius:999px;background:#0b1228;border:1px solid #1b2747;color:#dbeafe;white-space:nowrap;font-size:14px}
-
-    /* Controls BELOW the reels (restored) */
-    .controls-row{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:24px}
-    .control-group{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--subtle);border-radius:999px;background:rgba(17,24,39,.6)}
-    .control-label{font-size:12px;color:#cbd5e1}
+    /* Safer header layout: title left, sort control right (inside card) */
+    .card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .card-header h2{margin:0;font-size:16px;font-weight:700;color:#cbd5e1}
+    .sort-group{display:flex;align-items:center;gap:8px}
+    .sort-label{font-size:12px;color:var(--muted)}
     .segmented{display:inline-grid;grid-auto-flow:column;border:1px solid var(--subtle);border-radius:999px;overflow:hidden;background:rgba(17,24,39,.85)}
     .segmented input{position:absolute;opacity:0;pointer-events:none}
     .segmented label{padding:6px 10px;font-size:12px;cursor:pointer;user-select:none;line-height:1;white-space:nowrap;color:#cbd5e1}
     .segmented label:hover{background:rgba(59,130,246,.12)}
     .segmented input:checked + label{background:var(--accent-strong);color:white}
 
+    .reel{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--muted) transparent;padding:8px;border:1px dashed var(--subtle);border-radius:12px;min-height:64px;align-items:center;background:rgba(17,24,39,.4)}
+    .chip{padding:8px 10px;border-radius:999px;background:#0b1228;border:1px solid #1b2747;color:#dbeafe;white-space:nowrap;font-size:14px}
+
+    /* Space below reels for Hints toggle area */
+    .below-row{display:flex;gap:12px;align-items:center;margin-top:24px}
+
     .prompt{margin-top:18px;border:1px solid var(--subtle);border-radius:12px;padding:12px;background:rgba(17,24,39,.45)}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:#0b1023;padding:2px 6px;border-radius:6px;border:1px solid #202a44;color:#c7d2fe}
   </style>
 </head>
 <body>
@@ -63,6 +67,7 @@
     <div class="topbar">
       <div class="title">Prompt Builder</div>
       <div class="actions" style="display:flex;gap:10px">
+        <!-- Keep bigger buttons as requested previously -->
         <button id="btnNew" class="btn lg">New Prompt</button>
         <button id="btnCheck" class="btn lg">Check</button>
       </div>
@@ -71,40 +76,45 @@
     <div class="grid">
       <!-- Adjectives column -->
       <section id="adjectivesSection" class="card">
-        <h2>Adjectives</h2>
+        <div class="card-header">
+          <h2>Adjectives</h2>
+          <!-- Sort toggle now inside card header (top-right of reel area) -->
+          <div class="sort-group" aria-label="Adjectives sort options">
+            <span class="sort-label">Sort</span>
+            <div class="segmented" role="tablist" aria-label="Adjectives sort mode">
+              <input type="radio" id="adj-sort-alpha" name="adjSort" value="alpha" checked>
+              <label for="adj-sort-alpha" role="tab" aria-selected="true">A–Z</label>
+              <input type="radio" id="adj-sort-random" name="adjSort" value="random">
+              <label for="adj-sort-random" role="tab">Random</label>
+            </div>
+          </div>
+        </div>
         <div class="reel" id="adjectivesReel" aria-live="polite"></div>
       </section>
 
       <!-- Nouns column -->
       <section id="nounsSection" class="card">
-        <h2>Nouns</h2>
+        <div class="card-header">
+          <h2>Nouns</h2>
+          <!-- Sort toggle now inside card header (top-right of reel area) -->
+          <div class="sort-group" aria-label="Nouns sort options">
+            <span class="sort-label">Sort</span>
+            <div class="segmented" role="tablist" aria-label="Nouns sort mode">
+              <input type="radio" id="noun-sort-alpha" name="nounSort" value="alpha" checked>
+              <label for="noun-sort-alpha" role="tab" aria-selected="true">A–Z</label>
+              <input type="radio" id="noun-sort-random" name="nounSort" value="random">
+              <label for="noun-sort-random" role="tab">Random</label>
+            </div>
+          </div>
+        </div>
         <div class="reel" id="nounsReel" aria-live="polite"></div>
       </section>
     </div>
 
-    <!-- RESTORED: Sort toggles and Hints below the reels -->
-    <div class="controls-row" id="controlsRow">
-      <div class="control-group" aria-label="Adjectives sort options">
-        <span class="control-label">Adjectives</span>
-        <div class="segmented" role="tablist" aria-label="Adjectives sort mode">
-          <input type="radio" id="adj-sort-alpha" name="adjSort" value="alpha" checked>
-          <label for="adj-sort-alpha" role="tab" aria-selected="true">A–Z</label>
-          <input type="radio" id="adj-sort-random" name="adjSort" value="random">
-          <label for="adj-sort-random" role="tab">Random</label>
-        </div>
-      </div>
-
-      <div class="control-group" aria-label="Nouns sort options">
-        <span class="control-label">Nouns</span>
-        <div class="segmented" role="tablist" aria-label="Nouns sort mode">
-          <input type="radio" id="noun-sort-alpha" name="nounSort" value="alpha" checked>
-          <label for="noun-sort-alpha" role="tab" aria-selected="true">A–Z</label>
-          <input type="radio" id="noun-sort-random" name="nounSort" value="random">
-          <label for="noun-sort-random" role="tab">Random</label>
-        </div>
-      </div>
-
+    <!-- Keep the Hints On/Off button in the space BELOW the reels -->
+    <div class="below-row">
       <button id="btnHints" class="btn" aria-pressed="false">Hints: Off</button>
+      <span class="muted" style="color:var(--muted);font-size:12px">(Sort toggles are now in the top-right of each card)</span>
     </div>
 
     <div class="prompt" id="promptOutput" aria-live="polite"></div>
@@ -168,7 +178,7 @@
       }
     });
 
-    // Hints toggle
+    // Hints toggle (stays below reels)
     const btnHints = $('#btnHints');
     btnHints.addEventListener('click', ()=>{
       const on = btnHints.getAttribute('aria-pressed') === 'true';
@@ -177,7 +187,7 @@
       // Hook into your hints logic here
     });
 
-    // Top-right buttons
+    // Placeholder actions for top-right buttons
     $('#btnNew').addEventListener('click', ()=>{
       $('#promptOutput').textContent = '✨ New prompt generated.';
     });
@@ -188,6 +198,7 @@
     syncRadios();
     applySortAndRender();
 
+    // --- PWA service worker registration (unchanged) ---
     if ('serviceWorker' in navigator){
       window.addEventListener('load', ()=>{
         navigator.serviceWorker.register('/service-worker.js');
