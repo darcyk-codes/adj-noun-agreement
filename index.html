@@ -22,9 +22,8 @@
     <header>
       <h1>🎰 Possessive Match — Slovene (m/f/n)</h1>
       <div class="controls">
-        <button class="btn" id="newPromptBtn">New Prompt</button>
-        <button class="btn" id="toggleHints">Show Hints: ON</button>
-        <button class="btn primary" id="checkBtn">Check</button>
+        <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
+        <button class="btn primary bigbtn" id="checkBtn">Check</button>
       </div>
     </header>
 
@@ -48,7 +47,6 @@
       </div>
     </div>
 
-    <!-- Reels -->
     <div class="layout">
       <!-- Adjective reel -->
       <div class="panel">
@@ -65,6 +63,13 @@
             <button class="btn ghost" id="adjPrev">◀</button>
             <button class="btn ghost" id="adjNext">▶</button>
           </div>
+        </div>
+
+        <!-- NEW: Sorting & hints controls under adjective reel -->
+        <div class="belowReelControls">
+          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
+          <button class="btn" id="toggleNounSort">Noun order: Random</button>
+          <button class="btn" id="toggleHints">Show Hints: ON</button>
         </div>
       </div>
 
@@ -113,7 +118,7 @@
     </div>
   </div>
 
-  <!-- App JS (includes SW registration) -->
+  <!-- App JS -->
   <script src="./app.js"></script>
 </body>
 </html>

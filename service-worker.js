@@ -1,5 +1,5 @@
 /* service-worker.js */
-const VERSION = 'v1.3.1';
+const VERSION = 'v1.3.2';
 const STATIC_CACHE = `pmatch-static-${VERSION}`;
 const RUNTIME_CACHE = `pmatch-runtime-${VERSION}`;
 

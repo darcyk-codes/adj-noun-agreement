@@ -121,12 +121,22 @@ const NOUNS_START = [
 
 /* ---------- State ---------- */
 let showHints = true;
-let ADJ_GROUPS = shuffle(groupAdjectives(ADJECTIVES_RAW)); // randomized adjectives
-let NOUN_GROUPS = shuffle(groupNouns(NOUNS_START));        // randomized nouns
-let adjLen = ADJ_GROUPS.length;
-let nounLen = NOUN_GROUPS.length;
-let adjPos = 2*adjLen + 0;
-let nounPos = 2*nounLen + 0;
+
+// Sorting modes: 'random' or 'alpha'
+let adjSortMode = 'random';
+let nounSortMode = 'random';
+
+// Keep a stable base list for each; rebuild ordered copies from these
+let ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW);
+let NOUN_GROUPS_BASE = groupNouns(NOUNS_START);
+
+let ADJ_GROUPS = []; // ordered working copies
+let NOUN_GROUPS = [];
+
+let adjLen = 0;
+let nounLen = 0;
+let adjPos = 0;
+let nounPos = 0;
 
 /* ---------- DOM ---------- */
 const adjReel = document.getElementById('adjReel');
@@ -135,7 +145,7 @@ const adjTrack = document.getElementById('adjTrack');
 const nounTrack = document.getElementById('nounTrack');
 const adjBadge = document.getElementById('adjBadge');
 const nounBadge = document.getElementById('nounBadge');
-const adjKeys = document.getElementById('adjKeys');
+const adjKeys  = document.getElementById('adjKeys');
 const nounKeys = document.getElementById('nounKeys');
 const btnShowHints = document.getElementById('toggleHints');
 const promptText = document.getElementById('promptText');
@@ -144,10 +154,12 @@ const explain = document.getElementById('explain');
 const fileNameEl = document.getElementById('fileName');
 const encodingLabel = document.getElementById('encodingLabel');
 const csvWarn = document.getElementById('csvWarn');
-
 const providedSelect = document.getElementById('providedSelect');
 const loadProvidedBtn = document.getElementById('loadProvidedBtn');
 const providedHint = document.getElementById('providedHint');
+
+const btnAdjSort  = document.getElementById('toggleAdjSort');
+const btnNounSort = document.getElementById('toggleNounSort');
 
 const buttons = {
   newPromptBtn: document.getElementById('newPromptBtn'),
@@ -158,6 +170,14 @@ const buttons = {
   nounNext: document.getElementById('nounNext'),
   fileInput: document.getElementById('fileInput'),
 };
+
+/* ---------- Helpers ---------- */
+function clearPromptUI(){
+  window.promptState = null;
+  promptText.textContent = 'Tap “New Prompt”';
+  resultLine.textContent = '—';
+  explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
+}
 
 /* ---------- Reels rendering ---------- */
 function centerOffsetFor(trackEl){
@@ -299,17 +319,53 @@ function check(){
   }
 }
 
+/* ---------- Sorting logic ---------- */
+function sortAdj(mode){
+  adjSortMode = mode;
+  btnAdjSort.textContent = `Adj order: ${mode==='alpha'?'A–Z':'Random'}`;
+
+  const current = currentAdj(); // remember current selection to preserve it
+  let next = [];
+  if (mode === 'alpha') {
+    next = [...ADJ_GROUPS_BASE].sort((a,b)=> a.form.localeCompare(b.form,'sl',{sensitivity:'base'}));
+  } else {
+    next = shuffle(ADJ_GROUPS_BASE);
+  }
+  ADJ_GROUPS = next;
+  adjLen = ADJ_GROUPS.length;
+
+  // rebuild track
+  const targetIndex = current ? ADJ_GROUPS.findIndex(x => x.form===current.form && x.owner===current.owner) : 0;
+  buildReel(adjTrack, ADJ_GROUPS, a=>a.form);
+  adjPos = 2*adjLen + (targetIndex>=0?targetIndex:0);
+  requestAnimationFrame(()=>{ adjPos = renderByPos(adjTrack, adjLen, adjPos); updateBadges(); });
+}
+
+function sortNoun(mode){
+  nounSortMode = mode;
+  btnNounSort.textContent = `Noun order: ${mode==='alpha'?'A–Z':'Random'}`;
+
+  const current = currentNoun();
+  let next = [];
+  if (mode === 'alpha') {
+    next = [...NOUN_GROUPS_BASE].sort((a,b)=> a.noun.localeCompare(b.noun,'sl',{sensitivity:'base'}));
+  } else {
+    next = shuffle(NOUN_GROUPS_BASE);
+  }
+  NOUN_GROUPS = next;
+  nounLen = NOUN_GROUPS.length;
+
+  const targetIndex = current ? NOUN_GROUPS.findIndex(x => x.noun===current.noun) : 0;
+  buildReel(nounTrack, NOUN_GROUPS, n=>n.noun);
+  nounPos = 2*nounLen + (targetIndex>=0?targetIndex:0);
+  requestAnimationFrame(()=>{ nounPos = renderByPos(nounTrack, nounLen, nounPos); updateBadges(); });
+}
+
 /* ---------- Build ---------- */
 function buildAll(){
-  buildReel(adjTrack, ADJ_GROUPS, a=>a.form);
-  buildReel(nounTrack, NOUN_GROUPS, n=>n.noun);
-  adjPos = 2*adjLen + mod(adjPos, adjLen);
-  nounPos = 2*nounLen + mod(nounPos, nounLen);
-  requestAnimationFrame(()=>{
-    adjPos  = renderByPos(adjTrack, adjLen, adjPos);
-    nounPos = renderByPos(nounTrack, nounLen, nounPos);
-    updateBadges();
-  });
+  // initialize ordered copies from BASE using current sort modes
+  sortAdj(adjSortMode);
+  sortNoun(nounSortMode);
 }
 
 /* ---------- Provided lists loader (nouns/manifest.json) ---------- */
@@ -368,18 +424,17 @@ async function loadProvidedCSV(path){
         parsed.push({ noun, gender, number, english });
       }
     }
-    NOUN_GROUPS = shuffle(groupNouns(parsed));
-    nounLen = NOUN_GROUPS.length;
-    nounPos = 2*nounLen + 0;
-    buildAll();
-    clearPromptUI();  // ← reset the old English prompt & feedback
+
+    NOUN_GROUPS_BASE = groupNouns(parsed);   // update base with new dataset
+    sortNoun(nounSortMode);                  // reapply current sort mode
+    clearPromptUI();                         // reset prompt/feedback
     providedHint.textContent = `Loaded ${parsed.length} entries.`;
   }catch(err){
     providedHint.textContent = `Couldn’t load list: ${err.message}`;
   }
 }
 
-/* ---------- File upload (custom CSV) ---------- */
+/* ---------- Custom CSV upload ---------- */
 buttons.fileInput.addEventListener('change', async (e)=>{
   const file=e.target.files?.[0]; if(!file) return;
   fileNameEl.textContent=file.name; csvWarn.classList.remove('show'); encodingLabel.textContent='';
@@ -411,11 +466,9 @@ buttons.fileInput.addEventListener('change', async (e)=>{
     csvWarn.classList.add('show');
   }
 
-  NOUN_GROUPS = shuffle(groupNouns(parsed));
-  nounLen = NOUN_GROUPS.length;
-  nounPos = 2*nounLen + 0;
-  buildAll();
-  clearPromptUI();  // ← reset the old English prompt & feedback
+  NOUN_GROUPS_BASE = groupNouns(parsed); // update base
+  sortNoun(nounSortMode);                // reapply current sort
+  clearPromptUI();                       // reset prompt/feedback
 });
 
 /* ---------- Heuristic decoder + CSV parser ---------- */
@@ -462,10 +515,12 @@ function parseCSV(text){
 buttons.newPromptBtn.addEventListener('click', newPrompt);
 buttons.checkBtn.addEventListener('click', check);
 btnShowHints.addEventListener('click', ()=>{ showHints=!showHints; updateBadges(); });
+
 buttons.adjPrev.addEventListener('click', ()=>stepAdj(-1));
 buttons.adjNext.addEventListener('click', ()=>stepAdj(+1));
 buttons.nounPrev.addEventListener('click', ()=>stepNoun(-1));
 buttons.nounNext.addEventListener('click', ()=>stepNoun(+1));
+
 adjReel.addEventListener('wheel', wheelHandlerFactory('adj'), {passive:false});
 nounReel.addEventListener('wheel', wheelHandlerFactory('noun'), {passive:false});
 const adjTouch = touchHandlerFactory('adj'); const nounTouch = touchHandlerFactory('noun');
@@ -483,31 +538,24 @@ loadProvidedBtn.addEventListener('click', ()=>{
   if (val && !providedSelect.disabled) loadProvidedCSV(val);
 });
 
-/* Helper functions */
-function clearPromptUI(){
-  window.promptState = null;                 // forget the old target
-  promptText.textContent = 'Tap “New Prompt”';
-  resultLine.textContent = '—';
-  explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
-}
-
+btnAdjSort.addEventListener('click', ()=>{
+  sortAdj(adjSortMode==='random' ? 'alpha' : 'random');
+});
+btnNounSort.addEventListener('click', ()=>{
+  sortNoun(nounSortMode==='random' ? 'alpha' : 'random');
+});
 
 /* Build & load lists */
-let ADJ_GROUPS_INIT = groupAdjectives(ADJECTIVES_RAW);
-ADJ_GROUPS = shuffle(ADJ_GROUPS_INIT);
 buildAll();
 loadProvidedIndex();
 
-/* ---------- PWA: service worker registration ---------- */
 /* ---------- PWA: service worker registration with update flow ---------- */
 (function registerSWWithUpdates(){
   if (!('serviceWorker' in navigator)) return;
 
   let refreshing = false;
 
-  // Show a small banner with an "Update" button
   function showUpdateToast(onClick){
-    // prevent duplicates
     if (document.querySelector('.update-toast')) return;
     const bar = document.createElement('div');
     bar.className = 'update-toast';
@@ -521,7 +569,6 @@ loadProvidedIndex();
     bar.querySelector('#applyBtn').addEventListener('click', ()=> onClick?.());
   }
 
-  // Reload once the new SW takes control
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     refreshing = true;
@@ -533,16 +580,12 @@ loadProvidedIndex();
       const reg = await navigator.serviceWorker.register('./service-worker.js');
       console.log('[SW] registered', reg.scope);
 
-      // If a new worker is found, wire its state changes
       reg.addEventListener('updatefound', () => {
         const sw = reg.installing;
         if (!sw) return;
         sw.addEventListener('statechange', () => {
-          // When a new SW is installed *and* there is an existing controller,
-          // it means an update is ready (not the first install).
           if (sw.state === 'installed' && navigator.serviceWorker.controller) {
             showUpdateToast(() => {
-              // Ask the waiting worker to activate immediately
               if (reg.waiting) {
                 reg.waiting.postMessage('SKIP_WAITING');
               } else if (reg.installing && reg.installing.state === 'installed') {
@@ -553,7 +596,6 @@ loadProvidedIndex();
         });
       });
 
-      // Periodically check for updates (every 30 min) and when tab refocuses
       setInterval(() => reg.update().catch(()=>{}), 30 * 60 * 1000);
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') reg.update().catch(()=>{});
