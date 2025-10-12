@@ -122,40 +122,6 @@
       </div>
     </div>
   </div>
-
-  <!-- App JS -->
-  <script>
-    let mode = localStorage.getItem('mode') || 'en2sl'; // en2sl or sl2en
-    const toggleModeBtn = document.getElementById('toggleMode');
-
-    function applyModeUI() {
-      toggleModeBtn.textContent = (mode === 'en2sl') ? 'Prompt: English → Slovene' : 'Prompt: Slovene → English';
-    }
-
-    toggleModeBtn.addEventListener('click', () => {
-      mode = (mode === 'en2sl') ? 'sl2en' : 'en2sl';
-      localStorage.setItem('mode', mode);
-      applyModeUI();
-      renderReels();
-      generatePrompt();
-    });
-
-    function renderReels() {
-      const useEnglish = (mode === 'sl2en');
-      const adjLabels = useEnglish ? possAdj.map(a => a.en) : possAdj.map(a => a.sl);
-      const nounLabels = useEnglish ? nouns.map(n => n.en) : nouns.map(n => n.sl);
-      renderReel(adjLabels, document.getElementById('adjTrack'));
-      renderReel(nounLabels, document.getElementById('nounTrack'));
-    }
-
-    function generatePrompt() {
-      // placeholder for mode-based prompt generation logic
-      const prompt = document.getElementById('promptText');
-      if (mode === 'en2sl') prompt.textContent = 'English Prompt Example';
-      else prompt.textContent = 'Slovene Prompt Example';
-    }
-
-    applyModeUI();
-  </script>
+<script src="./app.js"></script>
 </body>
 </html>

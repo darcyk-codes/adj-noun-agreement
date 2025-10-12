@@ -307,12 +307,12 @@
       buildOrderAndRender();
     }
 
-    // ---- Provided lists (optional). Looks for ./provided/manifest.json
+    // ---- Provided lists (optional). Looks for ./nouns/manifest.json
     async function initProvidedLists() {
       if (!providedSelect || !loadProvidedBtn || !providedHint) return;
 
       try {
-        const res = await fetch('./provided/manifest.json', { cache: 'no-store' });
+        const res = await fetch('./nouns/manifest.json', { cache: 'no-store' });
         if (!res.ok) throw new Error(String(res.status));
         const manifest = await res.json(); // expect [{name, url}, ...]
         if (!Array.isArray(manifest) || manifest.length === 0) {
