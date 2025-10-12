@@ -372,6 +372,7 @@ async function loadProvidedCSV(path){
     nounLen = NOUN_GROUPS.length;
     nounPos = 2*nounLen + 0;
     buildAll();
+    clearPromptUI();  // ← reset the old English prompt & feedback
     providedHint.textContent = `Loaded ${parsed.length} entries.`;
   }catch(err){
     providedHint.textContent = `Couldn’t load list: ${err.message}`;
@@ -414,6 +415,7 @@ buttons.fileInput.addEventListener('change', async (e)=>{
   nounLen = NOUN_GROUPS.length;
   nounPos = 2*nounLen + 0;
   buildAll();
+  clearPromptUI();  // ← reset the old English prompt & feedback
 });
 
 /* ---------- Heuristic decoder + CSV parser ---------- */
@@ -480,6 +482,15 @@ loadProvidedBtn.addEventListener('click', ()=>{
   const val = providedSelect.value;
   if (val && !providedSelect.disabled) loadProvidedCSV(val);
 });
+
+/* Helper functions */
+function clearPromptUI(){
+  window.promptState = null;                 // forget the old target
+  promptText.textContent = 'Tap “New Prompt”';
+  resultLine.textContent = '—';
+  explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
+}
+
 
 /* Build & load lists */
 let ADJ_GROUPS_INIT = groupAdjectives(ADJECTIVES_RAW);
