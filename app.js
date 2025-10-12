@@ -488,10 +488,67 @@ buildAll();
 loadProvidedIndex();
 
 /* ---------- PWA: service worker registration ---------- */
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js')
-      .then(reg => console.log('[SW] registered', reg.scope))
-      .catch(err => console.warn('[SW] registration failed', err));
+/* ---------- PWA: service worker registration with update flow ---------- */
+(function registerSWWithUpdates(){
+  if (!('serviceWorker' in navigator)) return;
+
+  let refreshing = false;
+
+  // Show a small banner with an "Update" button
+  function showUpdateToast(onClick){
+    // prevent duplicates
+    if (document.querySelector('.update-toast')) return;
+    const bar = document.createElement('div');
+    bar.className = 'update-toast';
+    bar.innerHTML = `
+      <span>🔄 An update is available.</span>
+      <button class="btn" id="laterBtn">Later</button>
+      <button class="btn primary" id="applyBtn">Update now</button>
+    `;
+    document.body.appendChild(bar);
+    bar.querySelector('#laterBtn').addEventListener('click', ()=> bar.remove());
+    bar.querySelector('#applyBtn').addEventListener('click', ()=> onClick?.());
+  }
+
+  // Reload once the new SW takes control
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
   });
-}
+
+  window.addEventListener('load', async () => {
+    try{
+      const reg = await navigator.serviceWorker.register('./service-worker.js');
+      console.log('[SW] registered', reg.scope);
+
+      // If a new worker is found, wire its state changes
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          // When a new SW is installed *and* there is an existing controller,
+          // it means an update is ready (not the first install).
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateToast(() => {
+              // Ask the waiting worker to activate immediately
+              if (reg.waiting) {
+                reg.waiting.postMessage('SKIP_WAITING');
+              } else if (reg.installing && reg.installing.state === 'installed') {
+                reg.installing.postMessage('SKIP_WAITING');
+              }
+            });
+          }
+        });
+      });
+
+      // Periodically check for updates (every 30 min) and when tab refocuses
+      setInterval(() => reg.update().catch(()=>{}), 30 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(()=>{});
+      });
+    }catch(err){
+      console.warn('[SW] registration failed', err);
+    }
+  });
+})();
