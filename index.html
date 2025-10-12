@@ -1,263 +1,124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Prompt Builder</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#111827" />
-  <style>
-    :root {
-      --bg:#0f172a;
-      --panel:#111827;
-      --subtle:#1f2937;
-      --muted:#9ca3af;
-      --text:#e5e7eb;
-      --accent:#60a5fa;
-      --accent-strong:#3b82f6;
-      --ring: rgba(96,165,250,.45);
-      --radius:16px;
-    }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",sans-serif;
-      background:linear-gradient(180deg,var(--bg),#0b1023);
-      color:var(--text);
-    }
-    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  <title>Possessive Match — Slovenian Nouns</title>
 
-    .topbar{display:flex;align-items:center;gap:16px;justify-content:space-between;margin-bottom:20px}
-    .title{font-weight:700;font-size:20px;letter-spacing:.2px}
+  <!-- PWA basics -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="icon" href="./icons/icon-192.png" />
 
-    .btn{
-      border:1px solid var(--subtle);
-      background:var(--panel);
-      color:var(--text);
-      padding:10px 14px;
-      border-radius:12px;
-      cursor:pointer;
-      transition:.18s ease;
-      line-height:1;
-      display:inline-flex;
-      gap:8px;
-      align-items:center
-    }
-    .btn:hover{border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
-    .btn.primary{background:var(--accent-strong);border-color:transparent}
-    .btn.lg{font-size:16px;padding:12px 18px}
-
-    .grid{display:grid;grid-template-columns:1fr;gap:28px}
-    @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
-
-    .card{
-      border:1px solid var(--subtle);
-      background:linear-gradient(180deg,rgba(31,41,55,.65),rgba(31,41,55,.3));
-      border-radius:var(--radius);
-      padding:12px 16px 18px
-    }
-    .card h2{margin:0 0 10px;font-size:16px;font-weight:700;color:#cbd5e1}
-
-    .reel{
-      display:flex;
-      gap:8px;
-      overflow-x:auto;
-      scrollbar-width:thin;
-      scrollbar-color:var(--muted) transparent;
-      padding:8px;
-      border:1px dashed var(--subtle);
-      border-radius:12px;
-      min-height:64px;
-      align-items:center;
-      background:rgba(17,24,39,.4)
-    }
-    .chip{
-      padding:8px 10px;
-      border-radius:999px;
-      background:#0b1228;
-      border:1px solid #1b2747;
-      color:#dbeafe;
-      white-space:nowrap;
-      font-size:14px
-    }
-
-    .controls-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:16px;
-      align-items:center;
-      margin-top:24px
-    }
-    .control-group{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      padding:8px 10px;
-      border:1px solid var(--subtle);
-      border-radius:999px;
-      background:rgba(17,24,39,.6)
-    }
-    .control-label{font-size:12px;color:#cbd5e1}
-    .segmented{
-      display:inline-grid;
-      grid-auto-flow:column;
-      border:1px solid var(--subtle);
-      border-radius:999px;
-      overflow:hidden;
-      background:rgba(17,24,39,.85)
-    }
-    .segmented input{position:absolute;opacity:0;pointer-events:none}
-    .segmented label{
-      padding:6px 10px;
-      font-size:12px;
-      cursor:pointer;
-      user-select:none;
-      line-height:1;
-      white-space:nowrap;
-      color:#cbd5e1
-    }
-    .segmented label:hover{background:rgba(59,130,246,.12)}
-    .segmented input:checked + label{background:var(--accent-strong);color:white}
-
-    .prompt{
-      margin-top:18px;
-      border:1px solid var(--subtle);
-      border-radius:12px;
-      padding:12px;
-      background:rgba(17,24,39,.45)
-    }
-  </style>
+  <!-- Styles -->
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="title">Prompt Builder</div>
-      <div class="actions" style="display:flex;gap:10px">
-        <button id="btnNew" class="btn lg">New Prompt</button>
-        <button id="btnCheck" class="btn lg">Check</button>
+  <div class="app">
+    <header>
+      <h1>🎰 Possessive Match — Slovene (m/f/n)</h1>
+      <div class="controls">
+        <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
+        <button class="btn primary bigbtn" id="checkBtn">Check</button>
+      </div>
+    </header>
+
+    <!-- Prompt + Feedback -->
+    <div class="panel">
+      <div class="two">
+        <div class="grid">
+          <div class="sectionTitle">English Prompt</div>
+          <div class="card">
+            <div class="big" id="promptText">Tap “New Prompt”</div>
+            <div class="muted" id="promptHint"></div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="sectionTitle">Feedback</div>
+          <div class="card">
+            <div class="big" id="resultLine">—</div>
+            <div class="muted" id="explain">Spin both reels to match the prompt, then press “Check”.</div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="grid">
-      <section id="adjectivesSection" class="card">
-        <h2>Adjectives</h2>
-        <div class="reel" id="adjectivesReel" aria-live="polite"></div>
-      </section>
+    <div class="layout">
+      <!-- Adjective reel -->
+      <div class="panel">
+        <div class="sectionTitle">Possessive Adjective (Slovene)</div>
+        <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
+          <div class="reelTrack" id="adjTrack"></div>
+        </div>
+        <div class="reelFooter">
+          <div class="badgeRow">
+            <span class="badge" id="adjBadge">Selected: —</span>
+            <div class="keys" id="adjKeys"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="adjPrev">◀</button>
+            <button class="btn ghost" id="adjNext">▶</button>
+          </div>
+        </div>
 
-      <section id="nounsSection" class="card">
-        <h2>Nouns</h2>
-        <div class="reel" id="nounsReel" aria-live="polite"></div>
-      </section>
-    </div>
-
-    <div class="controls-row" id="controlsRow">
-      <div class="control-group" aria-label="Adjectives sort options">
-        <span class="control-label">Adjectives</span>
-        <div class="segmented" role="tablist" aria-label="Adjectives sort mode">
-          <input type="radio" id="adj-sort-alpha" name="adjSort" value="alpha" checked>
-          <label for="adj-sort-alpha" role="tab" aria-selected="true">A–Z</label>
-          <input type="radio" id="adj-sort-random" name="adjSort" value="random">
-          <label for="adj-sort-random" role="tab">Random</label>
+        <!-- NEW: Sorting & hints controls under adjective reel -->
+        <div class="belowReelControls">
+          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
+          <button class="btn" id="toggleNounSort">Noun order: Random</button>
+          <button class="btn" id="toggleHints">Show Hints: ON</button>
         </div>
       </div>
 
-      <div class="control-group" aria-label="Nouns sort options">
-        <span class="control-label">Nouns</span>
-        <div class="segmented" role="tablist" aria-label="Nouns sort mode">
-          <input type="radio" id="noun-sort-alpha" name="nounSort" value="alpha" checked>
-          <label for="noun-sort-alpha" role="tab" aria-selected="true">A–Z</label>
-          <input type="radio" id="noun-sort-random" name="nounSort" value="random">
-          <label for="noun-sort-random" role="tab">Random</label>
+      <!-- Noun reel -->
+      <div class="panel">
+        <div class="sectionTitle">Noun (from your CSV)</div>
+        <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
+          <div class="reelTrack" id="nounTrack"></div>
+        </div>
+        <div class="reelFooter">
+          <div class="badgeRow">
+            <span class="badge" id="nounBadge">Selected: —</span>
+            <div class="keys" id="nounKeys"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="nounPrev">◀</button>
+            <button class="btn ghost" id="nounNext">▶</button>
+          </div>
+        </div>
+
+        <!-- Provided lists -->
+        <div class="fileRow" style="margin-top:10px">
+          <select id="providedSelect" class="btn" style="min-width:260px" disabled>
+            <option>Loading provided lists…</option>
+          </select>
+          <button class="btn" id="loadProvidedBtn" disabled>Load Selected</button>
+          <span class="meta" id="providedHint"></span>
+        </div>
+
+        <!-- Custom upload -->
+        <div class="fileRow" style="margin-top:10px">
+          <input type="file" id="fileInput" accept=".csv" />
+          <label for="fileInput" class="btn">Upload Nouns (CSV)</label>
+          <span class="badge" id="fileName"></span>
+          <span class="meta" id="encodingLabel"></span>
+        </div>
+        <div class="utf8-note">⚠️ Save your CSV as <strong>CSV UTF-8 (Comma delimited)</strong> to preserve Slovene characters like <strong>č, š, ž</strong>.</div>
+        <div class="warn" id="csvWarn">
+          ⚠️ It looks like some Slovene characters (č, š, ž) didn’t import correctly. Please re-export your file as <strong>CSV UTF-8</strong> and upload again.
+        </div>
+        <div class="note" style="margin-top:8px">
+          CSV header required: <code>noun,gender,number,english</code> · gender: <code>m|f|n</code> · number: <code>sg|pl</code><br/>
+          Examples: <code>hiša,f,sg,house</code> · <code>mački,m,pl,kittens</code> · <code>mesto,n,sg,city</code>
         </div>
       </div>
-
-      <button id="btnHints" class="btn" aria-pressed="false">Hints: Off</button>
     </div>
-
-    <div class="prompt" id="promptOutput" aria-live="polite"></div>
   </div>
 
-  <script>
-    const adjectives = ["brave","clever","daring","elegant","fancy","gentle","happy","icy","jolly","kind","lively"];
-    const nouns = ["astronaut","bridge","compass","dragon","engine","forest","galaxy","harbor","island","jewel","kite"];
-
-    let adjSortMode = localStorage.getItem('adjSort') || 'alpha';
-    let nounSortMode = localStorage.getItem('nounSort') || 'alpha';
-
-    const $ = sel => document.querySelector(sel);
-
-    const adjReel  = $('#adjectivesReel');
-    const nounReel = $('#nounsReel');
-
-    function renderReel(list, el){
-      el.innerHTML = '';
-      list.forEach(w => {
-        const chip = document.createElement('div');
-        chip.className = 'chip';
-        chip.textContent = w;
-        el.appendChild(chip);
-      });
-    }
-
-    function shuffle(arr){
-      const a = arr.slice();
-      for(let i=a.length-1;i>0;i--){
-        const j = Math.floor(Math.random()*(i+1));
-        [a[i],a[j]] = [a[j],a[i]];
-      }
-      return a;
-    }
-
-    function applySortAndRender(){
-      const adj = (adjSortMode === 'alpha') ? adjectives.slice().sort((a,b)=>a.localeCompare(b)) : shuffle(adjectives);
-      const nn  = (nounSortMode === 'alpha') ? nouns.slice().sort((a,b)=>a.localeCompare(b)) : shuffle(nouns);
-      renderReel(adj, adjReel);
-      renderReel(nn,  nounReel);
-    }
-
-    function syncRadios(){
-      $('#adj-sort-alpha').checked = (adjSortMode==='alpha');
-      $('#adj-sort-random').checked = (adjSortMode==='random');
-      $('#noun-sort-alpha').checked = (nounSortMode==='alpha');
-      $('#noun-sort-random').checked = (nounSortMode==='random');
-    }
-
-    document.addEventListener('change', (e)=>{
-      if(e.target.name === 'adjSort'){
-        adjSortMode = e.target.value;
-        localStorage.setItem('adjSort', adjSortMode);
-        applySortAndRender();
-      }
-      if(e.target.name === 'nounSort'){
-        nounSortMode = e.target.value;
-        localStorage.setItem('nounSort', nounSortMode);
-        applySortAndRender();
-      }
-    });
-
-    const btnHints = $('#btnHints');
-    btnHints.addEventListener('click', ()=>{
-      const on = btnHints.getAttribute('aria-pressed') === 'true';
-      btnHints.setAttribute('aria-pressed', String(!on));
-      btnHints.textContent = `Hints: ${!on ? 'On' : 'Off'}`;
-    });
-
-    $('#btnNew').addEventListener('click', ()=>{
-      $('#promptOutput').textContent = '✨ New prompt generated.';
-    });
-    $('#btnCheck').addEventListener('click', ()=>{
-      $('#promptOutput').textContent = '✅ Prompt looks good!';
-    });
-
-    syncRadios();
-    applySortAndRender();
-
-    if ('serviceWorker' in navigator){
-      window.addEventListener('load', ()=>{
-        navigator.serviceWorker.register('/service-worker.js');
-      });
-    }
-  </script>
+  <!-- App JS -->
+  <script src="./app.js"></script>
 </body>
 </html>
