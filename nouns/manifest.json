@@ -1,0 +1,17 @@
+[
+  { "file": "animals-set1.csv", "label": "Animals (Set 1)" },
+  { "file": "animals-set2.csv",  "label": "Animals (Set 2)" },
+  { "file": "animals-set3.csv",  "label": "Animals (Set 3)" },
+  { "file": "city-set1.csv",  "label": "City Life (Set 1)" },
+  { "file": "city-set2.csv",  "label": "City Life (Set 2)" },
+  { "file": "city-set3.csv",  "label": "City Life (Set 3)" },
+  { "file": "clothing-set1.csv",  "label": "Clothing (Set 1)" },
+  { "file": "clothing-set2.csv",  "label": "Clothing (Set 2)" },
+  { "file": "common-nouns-set1.csv",  "label": "Common Nouns (Set 1)" },
+  { "file": "common-nouns-set2.csv",  "label": "Common Nouns (Set 2)" },
+  { "file": "family-set1.csv",  "label": "Family (Set 1)" },
+  { "file": "family-set2.csv",  "label": "Family (Set 2)" },
+  { "file": "family-set3.csv",  "label": "Family (Set 3)" },
+  { "file": "household-set1.csv",  "label": "Household (Set 1)" },
+  { "file": "household-set2.csv",  "label": "Household (Set 2)" }
+]

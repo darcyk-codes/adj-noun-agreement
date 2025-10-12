@@ -60,7 +60,6 @@
   .grid{display:grid;gap:12px}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .card{border-radius:12px;padding:14px;background:linear-gradient(180deg,#1b2130,#151a26);border:1px solid #23293a}
-  /* Increased to 30px as requested */
   .big{font-size:30px;font-weight:800;letter-spacing:.3px}
   .muted{color:var(--muted);font-size:13px}
 
@@ -138,6 +137,17 @@
           <button class="btn ghost" id="nounNext">▶</button>
         </div>
       </div>
+
+      <!-- Provided lists -->
+      <div class="fileRow" style="margin-top:10px">
+        <select id="providedSelect" class="btn" style="min-width:260px" disabled>
+          <option>Loading provided lists…</option>
+        </select>
+        <button class="btn" id="loadProvidedBtn" disabled>Load Selected</button>
+        <span class="meta" id="providedHint"></span>
+      </div>
+
+      <!-- Custom upload -->
       <div class="fileRow" style="margin-top:10px">
         <input type="file" id="fileInput" accept=".csv" />
         <label for="fileInput" class="btn">Upload Nouns (CSV)</label>
@@ -258,7 +268,6 @@ function groupNouns(rows){
       entry.variants.push({ gender:r.gender, number:r.number });
     }
   }
-  // dedupe/sort variants
   const groups = Array.from(map.values()).map(x=>{
     const seen = new Set();
     x.variants = x.variants
@@ -278,13 +287,13 @@ function groupNouns(rows){
 }
 
 /* ---------- State ---------- */
-let showHints = true;             // single toggle controls chips & feedback detail
+let showHints = true;
 
 let ADJ_GROUPS = shuffle(groupAdjectives(ADJECTIVES_RAW)); // randomized adjectives
-let NOUN_GROUPS = shuffle(groupNouns(NOUNS_START));        // ★ randomized nouns
+let NOUN_GROUPS = shuffle(groupNouns(NOUNS_START));        // randomized nouns
 let adjLen = ADJ_GROUPS.length;
 let nounLen = NOUN_GROUPS.length;
-let adjPos = 2*adjLen + 0;  // absolute position inside 5x list
+let adjPos = 2*adjLen + 0;
 let nounPos = 2*nounLen + 0;
 
 /* ---------- DOM ---------- */
@@ -303,6 +312,10 @@ const explain = document.getElementById('explain');
 const fileNameEl = document.getElementById('fileName');
 const encodingLabel = document.getElementById('encodingLabel');
 const csvWarn = document.getElementById('csvWarn');
+
+const providedSelect = document.getElementById('providedSelect');
+const loadProvidedBtn = document.getElementById('loadProvidedBtn');
+const providedHint = document.getElementById('providedHint');
 
 const buttons = {
   newPromptBtn: document.getElementById('newPromptBtn'),
@@ -417,7 +430,7 @@ function updateBadges(){
   btnShowHints.textContent = `Show Hints: ${showHints?'ON':'OFF'}`;
 }
 
-/* ---------- Prompt & feedback helpers ---------- */
+/* ---------- Prompt & feedback ---------- */
 function ownerLabel(owner){ return owner === 'your-pl' ? 'YOU ALL' : String(owner).toUpperCase(); }
 function featAbbrev(g, n){ return `${g}/${n}`.toLowerCase(); }
 
@@ -470,6 +483,72 @@ function buildAll(){
   });
 }
 
+/* ---------- Provided lists loader (nouns/manifest.json) ---------- */
+async function loadProvidedIndex(){
+  try{
+    const res = await fetch('nouns/manifest.json', {cache:'no-cache'});
+    if(!res.ok) throw new Error('manifest.json not found');
+    const items = await res.json();
+    if (!Array.isArray(items) || !items.length) throw new Error('no items');
+
+    providedSelect.innerHTML = '';
+    for (const it of items){
+      const path = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
+      const label = it.label || (it.file ? it.file : path.split('/').pop());
+      if (!path) continue;
+      const o = document.createElement('option');
+      o.value = path;
+      o.textContent = label;
+      providedSelect.appendChild(o);
+    }
+    providedSelect.disabled = false;
+    loadProvidedBtn.disabled = false;
+    providedHint.textContent = 'Pick a list and click Load Selected.';
+  }catch(e){
+    providedSelect.innerHTML = '<option>No provided lists found</option>';
+    providedSelect.disabled = true;
+    loadProvidedBtn.disabled = true;
+    providedHint.textContent = 'Tip: add nouns/manifest.json to list your CSVs.';
+  }
+}
+
+async function loadProvidedCSV(path){
+  try{
+    fileNameEl.textContent = path.split('/').pop();
+    encodingLabel.textContent = '(provided)';
+    csvWarn.classList.remove('show');
+
+    const res = await fetch(path, {cache:'no-cache'});
+    if(!res.ok) throw new Error('CSV not found');
+    const text = await res.text();
+
+    const rows = parseCSV(text);
+    const header=rows.shift()||[];
+    const idxN=header.findIndex(h=>h.trim().toLowerCase()==='noun');
+    const idxG=header.findIndex(h=>h.trim().toLowerCase()==='gender');
+    const idxU=header.findIndex(h=>h.trim().toLowerCase()==='number');
+    const idxE=header.findIndex(h=>h.trim().toLowerCase()==='english');
+    const parsed=[];
+    for(const r of rows){
+      if(!r.length) continue;
+      const noun=r[idxN]?.trim();
+      const gender=(r[idxG]||'').trim().toLowerCase();
+      const number=(r[idxU]||'').trim().toLowerCase();
+      const english=(r[idxE]||'').trim();
+      if(noun && ['m','f','n'].includes(gender) && ['sg','pl'].includes(number) && english){
+        parsed.push({ noun, gender, number, english });
+      }
+    }
+    NOUN_GROUPS = shuffle(groupNouns(parsed));
+    nounLen = NOUN_GROUPS.length;
+    nounPos = 2*nounLen + 0;
+    buildAll();
+    providedHint.textContent = `Loaded ${parsed.length} entries.`;
+  }catch(err){
+    providedHint.textContent = `Couldn’t load list: ${err.message}`;
+  }
+}
+
 /* ---------- Events & Inputs ---------- */
 buttons.newPromptBtn.addEventListener('click', newPrompt);
 buttons.checkBtn.addEventListener('click', check);
@@ -490,7 +569,13 @@ nounReel.addEventListener('touchend', nounTouch.end, {passive:true});
 adjReel.addEventListener('keydown', keyHandlerFactory('adj'));
 nounReel.addEventListener('keydown', keyHandlerFactory('noun'));
 
-/* ---------- CSV upload with smart decoding + conflict handling + encoding label ---------- */
+const loadProvidedHandler = ()=> {
+  const val = providedSelect.value;
+  if (val && !providedSelect.disabled) loadProvidedCSV(val);
+};
+document.getElementById('loadProvidedBtn').addEventListener('click', loadProvidedHandler);
+
+/* ---------- Custom CSV upload ---------- */
 buttons.fileInput.addEventListener('change', async (e)=>{
   const file=e.target.files?.[0]; if(!file) return;
   fileNameEl.textContent=file.name; csvWarn.classList.remove('show'); encodingLabel.textContent='';
@@ -516,21 +601,19 @@ buttons.fileInput.addEventListener('change', async (e)=>{
     }
   }
 
-  // Heuristic: if many nouns contain '?' and there are no Slovene diacritics in the raw text, warn the user.
   const replacedCount = parsed.filter(x => x.noun.includes('?')).length;
   const hasDiacritics = /[čšžČŠŽ]/.test(text);
   if (parsed.length && replacedCount >= 2 && !hasDiacritics){
     csvWarn.classList.add('show');
   }
 
-  // group nouns (enforce english consistency) and ★ randomize order after upload
   NOUN_GROUPS = shuffle(groupNouns(parsed));
   nounLen = NOUN_GROUPS.length;
   nounPos = 2*nounLen + 0;
   buildAll();
 });
 
-/* Heuristic decoder: pick the encoding with the fewest replacement chars (\uFFFD); prefer ones that keep č/š/ž */
+/* Heuristic decoder: fewest replacement chars (\uFFFD); prefer ones that keep č/š/ž */
 async function readFileAsTextSmart(file, encodings=['utf-8']){
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -546,7 +629,7 @@ async function readFileAsTextSmart(file, encodings=['utf-8']){
       if (score < best.score || (score===best.score && hasDia && !best.hasDiacritics)){
         best = {text, score, hasDiacritics:hasDia, enc};
       }
-    }catch{ /* ignore unsupported encoding */ }
+    }catch{}
   }
   if (!best.text){
     const fallback = new TextDecoder().decode(bytes);
@@ -572,9 +655,10 @@ function parseCSV(text){
 }
 
 /* Init */
-let ADJ_GROUPS_INIT = groupAdjectives(ADJECTIVES_RAW); // ensure grouping from start
+let ADJ_GROUPS_INIT = groupAdjectives(ADJECTIVES_RAW);
 ADJ_GROUPS = shuffle(ADJ_GROUPS_INIT);
 buildAll();
+loadProvidedIndex();
 
 /* PWA: service worker registration */
 if ('serviceWorker' in navigator) {
