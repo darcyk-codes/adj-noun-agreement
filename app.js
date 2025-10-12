@@ -1,17 +1,15 @@
-/* app.js — Language mode (EN→SL / SL→EN) swaps only prompt language and reel labels.
-   All other features (sort, hints, CSV/provided lists, check logic, controls) remain unchanged.
+/* app.js — Language mode that ONLY swaps prompt language and reel labels.
+   Fixes:
+   - Hints "bubbles" reliably populate/clear (#adjKeys, #nounKeys).
+   - Provided lists load from ./nouns/manifest.json.
+   - Prompt shows adj + noun in BOTH modes.
 */
 
 (() => {
-  // -----------------------------
-  // DOM helpers
-  // -----------------------------
+  // ---------- Helpers ----------
   const $  = (sel) => document.querySelector(sel);
-  const $$ = (sel) => document.querySelectorAll(sel);
 
-  // -----------------------------
-  // State
-  // -----------------------------
+  // ---------- State ----------
   let mode          = localStorage.getItem('mode') || 'en2sl'; // 'en2sl' or 'sl2en'
   let hintsOn       = localStorage.getItem('hintsOn') === 'true';
   let adjSortMode   = localStorage.getItem('adjSort')  || 'random'; // 'alpha' | 'random'
@@ -29,12 +27,10 @@
   let selectedAdjId  = null;
   let selectedNounId = null;
 
-  // Expected correct pair for current prompt
+  // Expected solution IDs for current prompt
   let expected = { adjId: null, nounId: null };
 
-  // -----------------------------
-  // Demo data (used until user loads CSV / provided list)
-  // -----------------------------
+  // Demo seed (shown until CSV/provided list is loaded)
   const DEMO_NOUNS = [
     { sl: 'hiša',   en: 'house',    gender: 'f', number: 'sg' },
     { sl: 'mesto',  en: 'city',     gender: 'n', number: 'sg' },
@@ -53,9 +49,11 @@
     { sl: 'njihova', en: 'their' },
   ];
 
-  // -----------------------------
-  // Utilities
-  // -----------------------------
+  function ensureDataReady() {
+    if (nouns.length === 0) nouns = DEMO_NOUNS.map((n, i) => ({ id: i, ...n }));
+    if (possAdj.length === 0) possAdj = DEMO_ADJ.map((a, i) => ({ id: i, ...a }));
+  }
+
   function shuffleIds(ids) {
     const a = ids.slice();
     for (let i = a.length - 1; i > 0; i--) {
@@ -71,16 +69,9 @@
     );
   }
 
-  function ensureDataReady() {
-    if (nouns.length === 0) nouns = DEMO_NOUNS.map((n, i) => ({ id: i, ...n }));
-    if (possAdj.length === 0) possAdj = DEMO_ADJ.map((a, i) => ({ id: i, ...a }));
-  }
-
-  // -----------------------------
-  // DOM-bound helpers (created after DOMContentLoaded)
-  // -----------------------------
+  // ---------- DOM Ready ----------
   window.addEventListener('DOMContentLoaded', () => {
-    // Grab elements
+    // Grab elements once
     const newPromptBtn   = $('#newPromptBtn');
     const checkBtn       = $('#checkBtn');
 
@@ -106,6 +97,9 @@
     const adjBadge       = $('#adjBadge');
     const nounBadge      = $('#nounBadge');
 
+    const adjKeys        = $('#adjKeys');     // hint chips container
+    const nounKeys       = $('#nounKeys');    // hint chips container
+
     const providedSelect = $('#providedSelect');
     const loadProvidedBtn= $('#loadProvidedBtn');
     const providedHint   = $('#providedHint');
@@ -115,24 +109,29 @@
     const encodingLabel  = $('#encodingLabel');
     const csvWarn        = $('#csvWarn');
 
-    // Seed data & IDs
+    // Seed & IDs
     ensureDataReady();
     possAdj = possAdj.map((a, i) => ({ id: (a.id ?? i), ...a }));
     nouns   = nouns.map((n, i) => ({ id: (n.id ?? i), ...n }));
 
-    // ---------- Render helpers ----------
-    function setBadgeTexts() {
-      const useEnglish = (mode === 'sl2en');
-      const a = possAdj.find(x => x.id === selectedAdjId);
-      const n = nouns.find(x => x.id === selectedNounId);
-      adjBadge.textContent  = `Selected: ${a ? (useEnglish ? a.en : a.sl) : '—'}`;
-      nounBadge.textContent = `Selected: ${n ? (useEnglish ? n.en : n.sl) : '—'}`;
+    // ---------- UI helpers ----------
+    function applyModeUI() {
+      toggleModeBtn.textContent =
+        (mode === 'en2sl') ? 'Prompt: English → Slovene' : 'Prompt: Slovene → English';
+      toggleModeBtn.setAttribute('aria-pressed', String(mode === 'sl2en'));
+
+      toggleHintsBtn.textContent = hintsOn ? 'Show Hints: ON' : 'Show Hints: OFF';
+      toggleHintsBtn.setAttribute('aria-pressed', String(hintsOn));
+
+      toggleAdjSort.textContent  = `Adj order: ${adjSortMode === 'alpha' ? 'A–Z' : 'Random'}`;
+      toggleNounSort.textContent = `Noun order: ${nounSortMode === 'alpha' ? 'A–Z' : 'Random'}`;
     }
 
     function buildOrderArrays() {
       const useEnglish = (mode === 'sl2en');
       const adjIds  = possAdj.map(a => a.id);
       const nounIds = nouns.map(n => n.id);
+
       adjOrder  = (adjSortMode  === 'alpha') ? alphaSortByKey(adjIds,  possAdj, useEnglish ? 'en' : 'sl') : shuffleIds(adjIds);
       nounOrder = (nounSortMode === 'alpha') ? alphaSortByKey(nounIds, nouns,   useEnglish ? 'en' : 'sl') : shuffleIds(nounIds);
     }
@@ -162,11 +161,56 @@
       });
     }
 
+    function setBadgeTexts() {
+      const useEnglish = (mode === 'sl2en');
+      const a = possAdj.find(x => x.id === selectedAdjId);
+      const n = nouns.find(x => x.id === selectedNounId);
+      adjBadge.textContent  = `Selected: ${a ? (useEnglish ? a.en : a.sl) : '—'}`;
+      nounBadge.textContent = `Selected: ${n ? (useEnglish ? n.en : n.sl) : '—'}`;
+    }
+
+    // ----- Hints row contents (fixes: reliably populate/clear) -----
+    function renderHints() {
+      if (!adjKeys || !nounKeys) return;
+
+      if (!hintsOn) {
+        adjKeys.innerHTML = '';
+        nounKeys.innerHTML = '';
+        return;
+      }
+
+      // Show helpful hints that do NOT reveal exact words:
+      // - noun gender/number
+      // - agreement note for adjective
+      const n = nouns.find(x => x.id === expected.nounId);
+      const gender = n?.gender || '—';
+      const number = n?.number || '—';
+
+      // Noun hints
+      nounKeys.innerHTML = '';
+      const ng = document.createElement('span');
+      ng.className = 'badge';
+      ng.textContent = `gender: ${gender}`;
+      const nn = document.createElement('span');
+      nn.className = 'badge';
+      nn.textContent = `number: ${number}`;
+      nounKeys.appendChild(ng);
+      nounKeys.appendChild(nn);
+
+      // Adjective hints (agreement reminder)
+      adjKeys.innerHTML = '';
+      const agr = document.createElement('span');
+      agr.className = 'badge';
+      agr.textContent = `agree with ${gender}/${number}`;
+      adjKeys.appendChild(agr);
+    }
+
     function renderReels() {
       buildOrderArrays();
       renderTrack(adjTrack,  adjOrder,  labelAdj,  selectedAdjId,  (id) => { selectedAdjId = id; renderReels(); });
       renderTrack(nounTrack, nounOrder, labelNoun, selectedNounId, (id) => { selectedNounId = id; renderReels(); });
       setBadgeTexts();
+      renderHints(); // ensure hints refresh with every render
     }
 
     function stepSelection(kind, delta) {
@@ -184,65 +228,44 @@
       renderReels();
     }
 
-    // ---------- UI wiring ----------
-    function applyModeUI() {
-      // Button label reflects direction
-      toggleModeBtn.textContent =
-        (mode === 'en2sl') ? 'Prompt: English → Slovene' : 'Prompt: Slovene → English';
-      toggleModeBtn.setAttribute('aria-pressed', String(mode === 'sl2en'));
-
-      // Hints button unchanged
-      toggleHintsBtn.textContent = hintsOn ? 'Show Hints: ON' : 'Show Hints: OFF';
-      toggleHintsBtn.setAttribute('aria-pressed', String(hintsOn));
-
-      // Sort labels unchanged behavior
-      toggleAdjSort.textContent  = `Adj order: ${adjSortMode === 'alpha' ? 'A–Z' : 'Random'}`;
-      toggleNounSort.textContent = `Noun order: ${nounSortMode === 'alpha' ? 'A–Z' : 'Random'}`;
-    }
-
     function pickRandomFrom(arr) {
       return arr[Math.floor(Math.random() * arr.length)];
     }
 
+    // ---------- Prompt + Check ----------
     function generatePrompt() {
-      // Choose expected solution by ID (same IDs regardless of mode)
+      // Choose expected solution (same IDs in any mode)
       const noun = pickRandomFrom(nouns);
       const adj  = pickRandomFrom(possAdj);
       expected = { adjId: adj.id, nounId: noun.id };
 
-      // Clear current selection so user spins the reels
+      // Reset selection so the user spins the reels
       selectedAdjId  = null;
       selectedNounId = null;
 
-      // Only the prompt language changes with mode
+      // Prompt now includes adj + noun in both modes
       if (mode === 'en2sl') {
-        // English prompt (noun only, matching your baseline behavior)
-        promptText.textContent = noun.en;
+        promptText.textContent = `${adj.en} ${noun.en}`;
         promptHint.textContent = hintsOn ? 'Select the correct Slovene possessive + noun.' : '';
       } else {
-        // Slovene prompt (adj + noun)
-        const adjSL = possAdj.find(a => a.id === adj.id)?.sl || '';
-        promptText.textContent = `${adjSL} ${noun.sl}`;
+        promptText.textContent = `${adj.sl} ${noun.sl}`;
         promptHint.textContent = hintsOn ? 'Select the correct English possessive + noun.' : '';
       }
 
-      // Reset feedback
       resultLine.textContent = '—';
       explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
 
-      // Re-render reels (labels change language with mode)
       renderReels();
     }
 
     function evaluate() {
-      // Check by IDs only (unchanged)
       const ok = (selectedAdjId === expected.adjId) && (selectedNounId === expected.nounId);
       if (ok) {
         resultLine.textContent = '✅ Correct!';
         const a = possAdj.find(x => x.id === expected.adjId);
         const n = nouns.find(x => x.id === expected.nounId);
         if (mode === 'en2sl') {
-          explain.textContent = `You matched: ${a?.sl || '?'} ${n?.sl || '?'} (for “${n?.en || '?'}”).`;
+          explain.textContent = `You matched: ${a?.sl || '?'} ${n?.sl || '?'} (for “${a?.en || '?'} ${n?.en || '?'}”).`;
         } else {
           explain.textContent = `You matched: ${a?.en || '?'} ${n?.en || '?'} (for “${a?.sl || '?'} ${n?.sl || '?'}”).`;
         }
@@ -262,25 +285,7 @@
       }
     }
 
-    // ---------- Sort toggles (unchanged) ----------
-    function updateAdjSort() {
-      adjSortMode = (adjSortMode === 'alpha') ? 'random' : 'alpha';
-      localStorage.setItem('adjSort', adjSortMode);
-      applyModeUI();
-      renderReels();
-    }
-    function updateNounSort() {
-      nounSortMode = (nounSortMode === 'alpha') ? 'random' : 'alpha';
-      localStorage.setItem('nounSort', nounSortMode);
-      applyModeUI();
-      renderReels();
-    }
-    function initSortLabels() {
-      toggleAdjSort.textContent  = `Adj order: ${adjSortMode === 'alpha' ? 'A–Z' : 'Random'}`;
-      toggleNounSort.textContent = `Noun order: ${nounSortMode === 'alpha' ? 'A–Z' : 'Random'}`;
-    }
-
-    // ---------- Provided lists (same behavior; optional) ----------
+    // ---------- Provided lists ----------
     async function initProvidedLists() {
       try {
         const res = await fetch('./nouns/manifest.json', { cache: 'no-store' });
@@ -302,10 +307,11 @@
         providedSelect.disabled = false;
         loadProvidedBtn.disabled = false;
         providedHint.textContent = `Loaded ${manifest.length} provided list${manifest.length > 1 ? 's' : ''}.`;
-      } catch {
+      } catch (e) {
         providedSelect.disabled = true;
         loadProvidedBtn.disabled = true;
         providedHint.textContent = 'Provided lists are not configured.';
+        // console.info('Provided lists manifest not found at ./nouns/manifest.json');
       }
     }
 
@@ -327,7 +333,7 @@
       }
     }
 
-    // ---------- CSV upload (unchanged) ----------
+    // ---------- CSV upload ----------
     function parseCSVText(text) {
       const lines = text.replace(/\r/g, '').split('\n').map(l => l.trim());
       const cleaned = lines.filter(l => l.length > 0);
@@ -357,12 +363,11 @@
       return out;
     }
 
-    // ---------- Event wiring ----------
+    // ---------- Events ----------
     toggleModeBtn.addEventListener('click', () => {
       mode = (mode === 'en2sl') ? 'sl2en' : 'en2sl';
       localStorage.setItem('mode', mode);
       applyModeUI();
-      // Keep selection IDs; only labels & prompt language change
       renderReels();
       generatePrompt();
     });
@@ -371,11 +376,23 @@
       hintsOn = !hintsOn;
       localStorage.setItem('hintsOn', String(hintsOn));
       applyModeUI();
-      generatePrompt();
+      renderHints();   // update hint rows immediately
+      // keep current prompt; no need to regenerate unless you prefer
     });
 
-    toggleAdjSort.addEventListener('click', updateAdjSort);
-    toggleNounSort.addEventListener('click', updateNounSort);
+    toggleAdjSort.addEventListener('click', () => {
+      adjSortMode = (adjSortMode === 'alpha') ? 'random' : 'alpha';
+      localStorage.setItem('adjSort', adjSortMode);
+      applyModeUI();
+      renderReels();
+    });
+
+    toggleNounSort.addEventListener('click', () => {
+      nounSortMode = (nounSortMode === 'alpha') ? 'random' : 'alpha';
+      localStorage.setItem('nounSort', nounSortMode);
+      applyModeUI();
+      renderReels();
+    });
 
     adjPrevBtn.addEventListener('click', () => stepSelection('adj', -1));
     adjNextBtn.addEventListener('click', () => stepSelection('adj', +1));
@@ -418,10 +435,10 @@
     });
 
     // ---------- Boot ----------
-    initSortLabels();
     applyModeUI();
+    initProvidedLists();
 
-    // Default selection (first entries)
+    // Default selection (first items)
     selectedAdjId  = possAdj[0]?.id ?? null;
     selectedNounId = nouns[0]?.id ?? null;
 
