@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Possessive Match — Slovene Nouns</title>
+  <title>Possessive Match — Slovenian Nouns</title>
 
   <!-- PWA basics -->
   <link rel="manifest" href="./manifest.webmanifest" />
@@ -20,7 +20,7 @@
 <body>
   <div class="app">
     <header>
-      <h1>Possessive Match — Slovene Nouns</h1>
+      <h1>🎰 Possessive Match — Slovene (m/f/n)</h1>
       <div class="controls">
         <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
         <button class="btn primary bigbtn" id="checkBtn">Check</button>
@@ -31,7 +31,7 @@
     <div class="panel">
       <div class="two">
         <div class="grid">
-          <div class="sectionTitle">Prompt</div>
+          <div class="sectionTitle">English Prompt</div>
           <div class="card">
             <div class="big" id="promptText">Tap “New Prompt”</div>
             <div class="muted" id="promptHint"></div>
@@ -50,10 +50,12 @@
     <div class="layout">
       <!-- Adjective reel -->
       <div class="panel">
+        <!-- HEADER ROW with sort button (moved here) -->
         <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div class="sectionTitle">Possessive Adjective</div>
+          <div class="sectionTitle">Possessive Adjective (Slovene)</div>
           <button class="btn" id="toggleAdjSort">Adj order: Random</button>
         </div>
+
         <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
           <div class="reelTrack" id="adjTrack"></div>
         </div>
@@ -68,19 +70,20 @@
           </div>
         </div>
 
-        <!-- Below controls: hints + mode toggle -->
+        <!-- Keep Hints below the adjective reel (sort buttons removed from here) -->
         <div class="belowReelControls">
           <button class="btn" id="toggleHints">Show Hints: ON</button>
-          <button class="btn" id="toggleMode">Prompt: English → Slovene</button>
         </div>
       </div>
 
       <!-- Noun reel -->
       <div class="panel">
+        <!-- HEADER ROW with sort button (moved here) -->
         <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div class="sectionTitle">Noun (from your CSV)</div>
           <button class="btn" id="toggleNounSort">Noun order: Random</button>
         </div>
+
         <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
           <div class="reelTrack" id="nounTrack"></div>
         </div>
@@ -124,38 +127,6 @@
   </div>
 
   <!-- App JS -->
-  <script>
-    let mode = localStorage.getItem('mode') || 'en2sl'; // en2sl or sl2en
-    const toggleModeBtn = document.getElementById('toggleMode');
-
-    function applyModeUI() {
-      toggleModeBtn.textContent = (mode === 'en2sl') ? 'Prompt: English → Slovene' : 'Prompt: Slovene → English';
-    }
-
-    toggleModeBtn.addEventListener('click', () => {
-      mode = (mode === 'en2sl') ? 'sl2en' : 'en2sl';
-      localStorage.setItem('mode', mode);
-      applyModeUI();
-      renderReels();
-      generatePrompt();
-    });
-
-    function renderReels() {
-      const useEnglish = (mode === 'sl2en');
-      const adjLabels = useEnglish ? possAdj.map(a => a.en) : possAdj.map(a => a.sl);
-      const nounLabels = useEnglish ? nouns.map(n => n.en) : nouns.map(n => n.sl);
-      renderReel(adjLabels, document.getElementById('adjTrack'));
-      renderReel(nounLabels, document.getElementById('nounTrack'));
-    }
-
-    function generatePrompt() {
-      // placeholder for mode-based prompt generation logic
-      const prompt = document.getElementById('promptText');
-      if (mode === 'en2sl') prompt.textContent = 'English Prompt Example';
-      else prompt.textContent = 'Slovene Prompt Example';
-    }
-
-    applyModeUI();
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
