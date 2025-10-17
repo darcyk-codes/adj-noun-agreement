@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Possessive Match — English → Slovene</title>
+
+  <!-- PWA basics -->
+  <link rel="manifest" href="../manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="../icons/icon-192.png" />
+  <link rel="icon" href="../icons/icon-192.png" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>🎰 Possessive Match — English → Slovene</h1>
+      <div class="controls">
+        <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
+        <button class="btn primary bigbtn" id="checkBtn">Check</button>
+      </div>
+    </header>
+
+    <!-- Prompt + Feedback -->
+    <div class="panel">
+      <div class="two">
+        <div class="grid">
+          <!-- flipped label -->
+          <div class="sectionTitle">English Prompt</div>
+          <div class="card">
+            <div class="big" id="promptText">Tap “New Prompt”</div>
+            <div class="muted" id="promptHint"></div>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="sectionTitle">Feedback</div>
+          <div class="card">
+            <div class="big" id="resultLine">—</div>
+            <div class="muted" id="explain">Spin both reels to produce the correct Slovene form, then press “Check”.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- Adjective reel -->
+      <div class="panel">
+        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <!-- flipped label -->
+          <div class="sectionTitle">Possessive Adjective (Slovene)</div>
+          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
+        </div>
+
+        <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
+          <div class="reelTrack" id="adjTrack"></div>
+        </div>
+        <div class="reelFooter">
+          <div class="badgeRow">
+            <span class="badge" id="adjBadge">Selected: —</span>
+            <div class="keys" id="adjKeys"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="adjPrev">◀</button>
+            <button class="btn ghost" id="adjNext">▶</button>
+          </div>
+        </div>
+
+        <div class="belowReelControls">
+          <button class="btn" id="toggleHints">Show Hints: ON</button>
+        </div>
+      </div>
+
+      <!-- Noun reel -->
+      <div class="panel">
+        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div class="sectionTitle">Noun (Slovene)</div>
+          <button class="btn" id="toggleNounSort">Noun order: Random</button>
+        </div>
+
+        <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
+          <div class="reelTrack" id="nounTrack"></div>
+        </div>
+        <div class="reelFooter">
+          <div class="badgeRow">
+            <span class="badge" id="nounBadge">Selected: —</span>
+            <div class="keys" id="nounKeys"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="nounPrev">◀</button>
+            <button class="btn ghost" id="nounNext">▶</button>
+          </div>
+        </div>
+
+        <!-- Provided lists -->
+        <div class="fileRow" style="margin-top:10px">
+          <select id="providedSelect" class="btn" style="min-width:260px" disabled>
+            <option>Loading provided lists…</option>
+          </select>
+          <button class="btn" id="loadProvidedBtn" disabled>Load Selected</button>
+          <span class="meta" id="providedHint"></span>
+        </div>
+
+        <!-- Custom upload -->
+        <div class="fileRow" style="margin-top:10px">
+          <input type="file" id="fileInput" accept=".csv" />
+          <label for="fileInput" class="btn">Upload Nouns (CSV)</label>
+          <span class="badge" id="fileName"></span>
+          <span class="meta" id="encodingLabel"></span>
+        </div>
+        <div class="utf8-note">⚠️ Save your CSV as <strong>CSV UTF-8 (Comma delimited)</strong> to preserve Slovene characters like <strong>č, š, ž</strong>.</div>
+        <div class="warn" id="csvWarn">
+          ⚠️ It looks like some Slovene characters (č, š, ž) didn’t import correctly. Please re-export your file as <strong>CSV UTF-8</strong> and upload again.
+        </div>
+        <div class="note" style="margin-top:8px">
+          CSV header required: <code>noun,gender,number,english</code> · gender: <code>m|f|n</code> · number: <code>sg|pl</code><br/>
+          Examples: <code>hiša,f,sg,house</code> · <code>mački,m,pl,kittens</code> · <code>mesto,n,sg,city</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App JS -->
+  <script src="./app.js"></script>
+</body>
+</html>
