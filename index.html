@@ -2,131 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <title>Possessive Match — Slovene Nouns</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Possessive Match — Slovenian Nouns</title>
-
-  <!-- PWA basics -->
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <meta name="theme-color" content="#0f1115" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="icon" href="./icons/icon-192.png" />
-
-  <!-- Styles -->
-  <link rel="stylesheet" href="./styles.css" />
+  <meta name="color-scheme" content="light dark" />
+  <style>
+    :root {
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --bg: #ffffff;
+      --bg-pressed: #f3f4f6;
+      --focus: #2563eb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --border: #374151;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --bg: #111827;
+        --bg-pressed: #1f2937;
+        --focus: #60a5fa;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: var(--bg);
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .title { font-weight: 600; letter-spacing: 0.2px; }
+    .controls { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn[aria-pressed="true"] { background: var(--bg-pressed); }
+    .btn:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+    .hint { font-size: 12px; color: var(--muted); }
+    .frame {
+      position: fixed;
+      inset: 56px 0 0 0; /* header is ~56px tall */
+      width: 100%;
+      height: calc(100vh - 56px);
+      border: 0;
+    }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1>🎰 Possessive Match — Slovene (m/f/n)</h1>
-      <div class="controls">
-        <button class="btn bigbtn" id="newPromptBtn">New Prompt</button>
-        <button class="btn primary bigbtn" id="checkBtn">Check</button>
-      </div>
-    </header>
-
-    <!-- Prompt + Feedback -->
-    <div class="panel">
-      <div class="two">
-        <div class="grid">
-          <div class="sectionTitle">English Prompt</div>
-          <div class="card">
-            <div class="big" id="promptText">Tap “New Prompt”</div>
-            <div class="muted" id="promptHint"></div>
-          </div>
-        </div>
-        <div class="grid">
-          <div class="sectionTitle">Feedback</div>
-          <div class="card">
-            <div class="big" id="resultLine">—</div>
-            <div class="muted" id="explain">Spin both reels to match the prompt, then press “Check”.</div>
-          </div>
-        </div>
-      </div>
+  <header>
+    <div class="title">Possessive Match — Slovene Nouns</div>
+    <div class="controls" role="group" aria-label="Prompt mode">
+      <button id="btn-sl" class="btn" aria-pressed="true" title="Slovene → English">SL → EN</button>
+      <button id="btn-en" class="btn" aria-pressed="false" title="English → Slovene">EN → SL</button>
+      <span class="hint" id="status" aria-live="polite"></span>
     </div>
+  </header>
 
-    <div class="layout">
-      <!-- Adjective reel -->
-      <div class="panel">
-        <!-- HEADER ROW with sort button (moved here) -->
-        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div class="sectionTitle">Possessive Adjective (Slovene)</div>
-          <button class="btn" id="toggleAdjSort">Adj order: Random</button>
-        </div>
+  <!-- Each mode runs in its own isolated document/runtime -->
+  <iframe id="frame-sl" class="frame" src="sl/index.html" title="SL → EN" loading="eager"></iframe>
+  <iframe id="frame-en" class="frame hidden" src="en/index.html" title="EN → SL" loading="lazy"></iframe>
 
-        <div class="reel" id="adjReel" tabindex="0" role="listbox" aria-label="Adjective reel">
-          <div class="reelTrack" id="adjTrack"></div>
-        </div>
-        <div class="reelFooter">
-          <div class="badgeRow">
-            <span class="badge" id="adjBadge">Selected: —</span>
-            <div class="keys" id="adjKeys"></div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn ghost" id="adjPrev">◀</button>
-            <button class="btn ghost" id="adjNext">▶</button>
-          </div>
-        </div>
-
-        <!-- Keep Hints below the adjective reel (sort buttons removed from here) -->
-        <div class="belowReelControls">
-          <button class="btn" id="toggleHints">Show Hints: ON</button>
-        </div>
-      </div>
-
-      <!-- Noun reel -->
-      <div class="panel">
-        <!-- HEADER ROW with sort button (moved here) -->
-        <div class="headerRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <div class="sectionTitle">Noun (from your CSV)</div>
-          <button class="btn" id="toggleNounSort">Noun order: Random</button>
-        </div>
-
-        <div class="reel" id="nounReel" tabindex="0" role="listbox" aria-label="Noun reel">
-          <div class="reelTrack" id="nounTrack"></div>
-        </div>
-        <div class="reelFooter">
-          <div class="badgeRow">
-            <span class="badge" id="nounBadge">Selected: —</span>
-            <div class="keys" id="nounKeys"></div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn ghost" id="nounPrev">◀</button>
-            <button class="btn ghost" id="nounNext">▶</button>
-          </div>
-        </div>
-
-        <!-- Provided lists -->
-        <div class="fileRow" style="margin-top:10px">
-          <select id="providedSelect" class="btn" style="min-width:260px" disabled>
-            <option>Loading provided lists…</option>
-          </select>
-          <button class="btn" id="loadProvidedBtn" disabled>Load Selected</button>
-          <span class="meta" id="providedHint"></span>
-        </div>
-
-        <!-- Custom upload -->
-        <div class="fileRow" style="margin-top:10px">
-          <input type="file" id="fileInput" accept=".csv" />
-          <label for="fileInput" class="btn">Upload Nouns (CSV)</label>
-          <span class="badge" id="fileName"></span>
-          <span class="meta" id="encodingLabel"></span>
-        </div>
-        <div class="utf8-note">⚠️ Save your CSV as <strong>CSV UTF-8 (Comma delimited)</strong> to preserve Slovene characters like <strong>č, š, ž</strong>.</div>
-        <div class="warn" id="csvWarn">
-          ⚠️ It looks like some Slovene characters (č, š, ž) didn’t import correctly. Please re-export your file as <strong>CSV UTF-8</strong> and upload again.
-        </div>
-        <div class="note" style="margin-top:8px">
-          CSV header required: <code>noun,gender,number,english</code> · gender: <code>m|f|n</code> · number: <code>sg|pl</code><br/>
-          Examples: <code>hiša,f,sg,house</code> · <code>mački,m,pl,kittens</code> · <code>mesto,n,sg,city</code>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- App JS -->
-  <script src="./app.js"></script>
+  <script type="module" src="./switcher.js"></script>
 </body>
 </html>
