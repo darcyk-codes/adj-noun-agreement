@@ -292,34 +292,63 @@ function newPrompt(){
   const chosen=NOUN_GROUPS[nounIdx];
   const owners=[...new Set(ADJECTIVES_RAW.map(a=>a.owner))];
   const owner=owners[Math.floor(Math.random()*owners.length)];
-  window.promptState={ owner, targetNounIndex: nounIdx, nounEnglish: chosen.english };
+
+  // store stable noun id (Slovene form) so sorting won't break Check
+  window.promptState = { owner, targetNounId: chosen.noun, nounEnglish: chosen.english };
   promptText.textContent=`${owner.replace('-pl',' (you all)')} ${chosen.english}`;
   resultLine.textContent='—';
   explain.textContent='Spin both reels to match the prompt, then press “Check”.';
 }
 
 function check(){
-  const st = window.promptState; if(!st){ explain.textContent='Create a prompt first.'; return; }
-  const a=currentAdj(), n=currentNoun(), target=NOUN_GROUPS[st.targetNounIndex];
+  const st = window.promptState;
+  if (!st) { explain.textContent = 'Create a prompt first.'; return; }
 
-  const ownerOK  = (a.owner===st.owner);
-  const agreeOK  = a.variants.some(av => n.variants.some(nv => av.gender===nv.gender && av.number===nv.number));
-  const nounOK   = (n.noun===target.noun);
-  const allOK    = ownerOK && agreeOK && nounOK;
+  // Current selections from the reels
+  const a = currentAdj();
+  const n = currentNoun();
 
-  resultLine.textContent=allOK?'✅ Correct!':'❌ Not quite';
-
-  if (showHints){
-    const adjFeat = a.variants.map(v => featAbbrev(v.gender, v.number)).join(', ');
-    const nounFeat = n.variants.map(v => featAbbrev(v.gender, v.number)).join(', ');
-    const parts=[];
-    parts.push(`Prompt: ${st.owner} + “${target.english}”`);
-    parts.push(`You chose adj: “${a.form}” (${ownerLabel(a.owner)} ${adjFeat})`);
-    parts.push(`and noun: “${n.noun}” (${String(n.english).toUpperCase()} ${nounFeat}).`);
-    explain.textContent = parts.join(' ');
-  } else {
-    explain.textContent = allOK ? '' : 'Try again.';
+  // --- Resolve the intended target noun robustly ---
+  // Prefer a stable Slovene noun id saved by newPrompt(): targetNounId
+  // Fallback to English gloss match if present
+  // LAST resort: legacy index (for prompts created before this fix)
+  let target = null;
+  if (st.targetNounId) {
+    target = NOUN_GROUPS.find(x => x.noun === st.targetNounId) || null;
   }
+  if (!target && st.nounEnglish) {
+    const wantedEn = String(st.nounEnglish).trim().toLowerCase();
+    target = NOUN_GROUPS.find(x => (x.english || '').trim().toLowerCase() === wantedEn) || null;
+  }
+  if (!target && typeof st.targetNounIndex === 'number') {
+    target = NOUN_GROUPS[st.targetNounIndex] || null;
+  }
+  if (!target) {
+    resultLine.textContent = '❌ Not quite';
+    explain.textContent = 'Could not resolve the target noun. Click “New Prompt” and try again.';
+    return;
+  }
+
+  // --- Checks ---
+  const ownerOK = !!a && (a.owner === st.owner);
+  const nounOK  = !!n && (n.noun === target.noun);
+  const agreeOK = !!a && !!n && a.variants?.some(v => v.gender === n.gender && v.number === n.number);
+
+  const allOK = ownerOK && nounOK && agreeOK;
+
+  // --- Feedback ---
+  resultLine.textContent = allOK ? '✅ Correct' : '❌ Not quite';
+
+  const parts = [];
+  // Show the intended prompt in a compact Slovene-oriented form
+  parts.push(`Prompt: ${st.owner} + “${target.noun}”`);
+  parts.push(`You chose adj: “${a?.form ?? '—'}” (${a?.owner?.toUpperCase() ?? '—'} ${n?.gender ?? '—'}/${n?.number ?? '—'}) and noun: “${n?.noun ?? '—'}” (${n?.gender ?? '—'}/${n?.number ?? '—'}).`);
+
+  if (!ownerOK) parts.push('• The possessive owner does not match the prompt.');
+  if (!agreeOK) parts.push('• The adjective must agree with the noun’s gender/number.');
+  if (!nounOK)  parts.push(`• The noun should be “${target.noun}” (EN: ${target.english}).`);
+
+  explain.textContent = parts.join(' ');
 }
 
 /* ---------- Sorting logic ---------- */

@@ -300,35 +300,45 @@ function newPrompt() {
   const owners = [...new Set(ADJECTIVES_RAW.map(a => a.owner))];
   const owner = owners[Math.floor(Math.random() * owners.length)];
 
-  window.promptState = { owner, targetNounIndex: nounIdx, nounEnglish: chosen.english };
+  // store stable noun ID (Slovene form) instead of index so sorting won't break Check
+  window.promptState = { owner, targetNounId: chosen.noun, nounEnglish: chosen.english };
   // Natural English order: "my kittens", "her house", "your (pl.) books"
   promptText.textContent = `${englishOwner(owner)} ${chosen.english}`;
   explain.textContent = 'Spin both reels to produce the correct Slovene form, then press “Check”.';
 }
 
 function check(){
-  const st = window.promptState; if(!st){ explain.textContent='Create a prompt first.'; return; }
-  const a=currentAdj(), n=currentNoun(), target=NOUN_GROUPS[st.targetNounIndex];
+  const st = window.promptState;
+  if (!st) { explain.textContent = 'Create a prompt first.'; return; }
 
-  const ownerOK  = (a.owner===st.owner);
-  const agreeOK  = a.variants.some(av => n.variants.some(nv => av.gender===nv.gender && av.number===nv.number));
-  const nounOK   = (n.noun===target.noun);
-  const allOK    = ownerOK && agreeOK && nounOK;
+  // Current selections from the reels
+  const a = currentAdj();
+  const n = currentNoun();
 
-  resultLine.textContent=allOK?'✅ Correct!':'❌ Not quite';
-
-  if (showHints){
-    const adjFeat = a.variants.map(v => featAbbrev(v.gender, v.number)).join(', ');
-    const nounFeat = n.variants.map(v => featAbbrev(v.gender, v.number)).join(', ');
-    const parts=[];
-    parts.push(`Prompt: “${englishOwner(st.owner)} ${target.english}”`);
-    parts.push(`You chose adj: “${a.form}” (${ownerLabel(a.owner)} ${adjFeat})`);
-    parts.push(`and noun: “${n.noun}” (${String(n.english).toUpperCase()} ${nounFeat}).`);
-    explain.textContent = parts.join(' ');
-  } else {
-    explain.textContent = allOK ? '' : 'Try again.';
+  // --- Resolve the intended target noun robustly ---
+  // 1) Preferred: stable Slovene noun id saved by newPrompt(): targetNounId
+  // 2) Fallback: match by English gloss saved by newPrompt(): nounEnglish (case-insensitive)
+  // 3) LAST resort: legacy index if present (not recommended, but avoids hard failure)
+  let target = null;
+  if (st.targetNounId) {
+    target = NOUN_GROUPS.find(x => x.noun === st.targetNounId) || null;
   }
-}
+  if (!target && st.nounEnglish) {
+    const wantedEn = String(st.nounEnglish).trim().toLowerCase();
+    target = NOUN_GROUPS.find(x => (x.english || '').trim().toLowerCase() === wantedEn) || null;
+  }
+  if (!target && typeof st.targetNounIndex === 'number') {
+    target = NOUN_GROUPS[st.targetNounIndex] || null;
+  }
+  if (!target) {
+    explain.textContent = 'Could not resolve the target noun. Click “New Prompt” and try again.';
+    resultLine.textContent = '❌ Not quite';
+    return;
+  }
+
+  // --- Checks ---
+  const ownerOK = a && (a.owner === st.owner);
+  const agreeOK = a && n && a.variants.some
 
 /* ---------- Sorting logic ---------- */
 function sortAdj(mode){
