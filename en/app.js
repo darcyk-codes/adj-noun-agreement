@@ -175,6 +175,10 @@ const buttons = {
 };
 
 /* ---------- Helpers ---------- */
+function englishOwner(owner){
+  return owner === 'your-pl' ? 'your (pl.)' : owner; // keep other owners as-is
+}
+
 function clearPromptUI(){
   window.promptState = null;
   promptText.textContent = 'Tap “New Prompt”';
@@ -296,10 +300,9 @@ function newPrompt() {
   const owners = [...new Set(ADJECTIVES_RAW.map(a => a.owner))];
   const owner = owners[Math.floor(Math.random() * owners.length)];
 
-  // For English → Slovene mode, prompt shows English word + owner in parentheses
   window.promptState = { owner, targetNounIndex: nounIdx, nounEnglish: chosen.english };
-  promptText.textContent = `${chosen.english} (${owner.replace('-pl',' you all')})`;
-  resultLine.textContent = '—';
+  // Natural English order: "my kittens", "her house", "your (pl.) books"
+  promptText.textContent = `${englishOwner(owner)} ${chosen.english}`;
   explain.textContent = 'Spin both reels to produce the correct Slovene form, then press “Check”.';
 }
 
@@ -318,7 +321,7 @@ function check(){
     const adjFeat = a.variants.map(v => featAbbrev(v.gender, v.number)).join(', ');
     const nounFeat = n.variants.map(v => featAbbrev(v.gender, v.number)).join(', ');
     const parts=[];
-    parts.push(`Prompt: “${target.english}” (${st.owner})`);
+    parts.push(`Prompt: “${englishOwner(st.owner)} ${target.english}”`);
     parts.push(`You chose adj: “${a.form}” (${ownerLabel(a.owner)} ${adjFeat})`);
     parts.push(`and noun: “${n.noun}” (${String(n.english).toUpperCase()} ${nounFeat}).`);
     explain.textContent = parts.join(' ');
