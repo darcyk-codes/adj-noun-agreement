@@ -318,7 +318,7 @@ function check(){
   // --- Resolve the intended target noun robustly ---
   // 1) Preferred: stable Slovene noun id saved by newPrompt(): targetNounId
   // 2) Fallback: match by English gloss saved by newPrompt(): nounEnglish (case-insensitive)
-  // 3) LAST resort: legacy index if present (not recommended, but avoids hard failure)
+  // 3) LAST resort: legacy index if present (for prompts created pre-fix)
   let target = null;
   if (st.targetNounId) {
     target = NOUN_GROUPS.find(x => x.noun === st.targetNounId) || null;
@@ -331,14 +331,35 @@ function check(){
     target = NOUN_GROUPS[st.targetNounIndex] || null;
   }
   if (!target) {
-    explain.textContent = 'Could not resolve the target noun. Click “New Prompt” and try again.';
     resultLine.textContent = '❌ Not quite';
+    explain.textContent = 'Could not resolve the target noun. Click “New Prompt” and try again.';
     return;
   }
 
   // --- Checks ---
-  const ownerOK = a && (a.owner === st.owner);
-  const agreeOK = a && n && a.variants.some
+  const ownerOK = !!a && (a.owner === st.owner);
+  const nounOK  = !!n && (n.noun === target.noun);
+  const agreeOK = !!a && !!n && a.variants.some(v => v.gender === n.gender && v.number === n.number);
+
+  const allOK = ownerOK && nounOK && agreeOK;
+
+  // --- Feedback ---
+  resultLine.textContent = allOK ? '✅ Correct' : '❌ Not quite';
+
+  const parts = [];
+  // Prompt summary (for SL mode you may keep this Slovene-oriented form)
+  parts.push(`Prompt: ${st.owner} + “${target.noun}”`);
+  parts.push(
+    `You chose adj: “${a?.form ?? '—'}” (${(a?.owner || '—').toUpperCase()} ${n?.gender ?? '—'}/${n?.number ?? '—'})` +
+    ` and noun: “${n?.noun ?? '—'}” (${n?.gender ?? '—'}/${n?.number ?? '—'}).`
+  );
+
+  if (!ownerOK) parts.push('• The possessive owner does not match the prompt.');
+  if (!agreeOK) parts.push('• The adjective must agree with the noun’s gender/number.');
+  if (!nounOK)  parts.push(`• The noun should be “${target.noun}” (EN: ${target.english}).`);
+
+  explain.textContent = parts.join(' ');
+}
 
 /* ---------- Sorting logic ---------- */
 function sortAdj(mode){
