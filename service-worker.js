@@ -1,5 +1,5 @@
 /* service-worker.js — root-safe for GitHub Pages, with sub-app support */
-const VERSION = 'v1.4.2';
+const VERSION = 'v1.4.3';
 const STATIC_CACHE  = `pmatch-static-${VERSION}`;
 const RUNTIME_CACHE = `pmatch-runtime-${VERSION}`;
 
@@ -27,7 +27,6 @@ const PRECACHE_ASSETS = [
   ABS('en/index.html'),
 
   // JS entry points (leave these even if the root one is absent; cache will skip)
-  ABS('app.js'),
   ABS('sl/app.js'),
   ABS('en/app.js'),
 
@@ -37,11 +36,23 @@ const PRECACHE_ASSETS = [
 
 /* ---------- Install: pre-cache app shell ---------- */
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(STATIC_CACHE);
+    // Try to precache each URL, but don't fail the whole install if one is missing
+    await Promise.all(PRECACHE_ASSETS.map(async (url) => {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res && res.ok) {
+          await cache.put(url, res.clone());
+        } else {
+          console.warn('[SW] skip precache (bad status)', url, res && res.status);
+        }
+      } catch (err) {
+        console.warn('[SW] skip precache (fetch error)', url, err);
+      }
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 /* ---------- Activate: clean old caches ---------- */
