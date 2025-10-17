@@ -1,5 +1,5 @@
 // Resolve repo root even when this page is served from /sl/ or /en/
-const ROOT = location.pathname.replace(/\/(sl|en)\/.*$/, '');
+const ROOT = location.pathname.replace(/\/(sl|en)(?:\/.*)?$/, '');
 
 /* ---------- Base adjective forms (flat) ---------- */
 const ADJECTIVES_RAW = [
