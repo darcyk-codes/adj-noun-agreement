@@ -1,24 +1,41 @@
-/* service-worker.js */
-const VERSION = 'v1.3.7';
-const STATIC_CACHE = `pmatch-static-${VERSION}`;
+/* service-worker.js — root-safe for GitHub Pages, with sub-app support */
+const VERSION = 'v1.4.0';
+const STATIC_CACHE  = `pmatch-static-${VERSION}`;
 const RUNTIME_CACHE = `pmatch-runtime-${VERSION}`;
+
+/* Resolve repo root even when navigated under /sl/ or /en/ */
+const ROOT = self.location.pathname.replace(/\/(sl|en)\/.*/, '');
 
 /** Build absolute URLs from the SW scope (GitHub Pages safe) */
 const BASE = self.registration.scope; // e.g., https://user.github.io/repo/
-const ABS = (p) => new URL(p, BASE).toString();
+const ABS  = (p) => new URL(p, BASE).toString();
 
 /** App shell to pre-cache (keep small) */
 const PRECACHE_ASSETS = [
+  // Root shell
   ABS(''),                      // folder URL (GH Pages "index")
   ABS('index.html'),
   ABS('styles.css'),
-  ABS('app.js'),
   ABS('manifest.webmanifest'),
   ABS('icons/icon-192.png'),
   ABS('icons/icon-512.png'),
+
+  // Sub-app entry points (so iframes work offline)
+  ABS('sl/'),
+  ABS('sl/index.html'),
+  ABS('en/'),
+  ABS('en/index.html'),
+
+  // JS entry points (leave these even if the root one is absent; cache will skip)
+  ABS('app.js'),
+  ABS('sl/app.js'),
+  ABS('en/app.js'),
+
+  // Shared data index (keep small; CSVs themselves are fetched on demand)
+  ABS('nouns/manifest.json'),
 ];
 
-/** Install: pre-cache app shell */
+/* ---------- Install: pre-cache app shell ---------- */
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
@@ -27,7 +44,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-/** Activate: clean old caches */
+/* ---------- Activate: clean old caches ---------- */
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -40,50 +57,57 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/** Fetch strategies:
- * - Documents: NetworkFirst (fallback to cache)
- * - Static assets (script/style/image/font/manifest): CacheFirst
- * - Provided lists (nouns/manifest.json & nouns/*.csv): Stale-While-Revalidate
- */
+/* ---------- Message: support SKIP_WAITING ---------- */
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
+
+/* ---------- Fetch strategies ---------- */
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-
-  // Only GET is cacheable
   if (req.method !== 'GET') return;
 
-  const url = new URL(req.url);
+  const url  = new URL(req.url);
+  const dest = req.destination;
 
   // Only handle same-origin requests (skip CDNs/external)
   if (url.origin !== self.location.origin) return;
 
-  const dest = req.destination;
-
-  // Provided lists: nouns manifest + CSVs
-  const isProvidedJSON = url.pathname.endsWith('/nouns/manifest.json');
-  const isProvidedCSV = url.pathname.startsWith(new URL('nouns/', BASE).pathname) && url.pathname.endsWith('.csv');
-
-  if (isProvidedJSON || isProvidedCSV) {
-    event.respondWith(staleWhileRevalidate(req));
+  // --- Safety shim: if something still requests /sl/nouns/... or /en/nouns/..., redirect to /nouns/... ---
+  if (url.pathname.includes('/sl/nouns/') || url.pathname.includes('/en/nouns/')) {
+    const rel = (url.pathname.split('/nouns/')[1] || '').replace(/^\/+/, '');
+    const fixedURL = ABS(`nouns/${rel}`);
+    event.respondWith(networkFirst(new Request(fixedURL, { headers: req.headers, mode: req.mode, credentials: req.credentials })));
     return;
   }
 
-  // Documents (HTML)
-  if (dest === 'document' || url.pathname.endsWith('/') || url.pathname.endsWith('/index.html')) {
+  // 1) HTML/documents -> Network-first (so deploys show quickly)
+  const isDoc = req.mode === 'navigate' || dest === 'document' || url.pathname.endsWith('/') || url.pathname.endsWith('/index.html');
+  if (isDoc) {
+    event.respondWith(networkFirst(req, /*navFallback*/true));
+    return;
+  }
+
+  // 2) Nouns data (manifest + CSVs) -> Network-first (avoids stale/404)
+  const nounsRoot = new URL('nouns/', BASE).pathname; // "/repo/nouns/"
+  const isNounsJSON = url.pathname === new URL('nouns/manifest.json', BASE).pathname;
+  const isNounsCSV  = url.pathname.startsWith(nounsRoot) && url.pathname.endsWith('.csv');
+  if (isNounsJSON || isNounsCSV) {
     event.respondWith(networkFirst(req));
     return;
   }
 
-  // Static assets
+  // 3) JS/CSS/Icons/Font -> Stale-while-revalidate
   if (['script', 'style', 'image', 'font', 'manifest'].includes(dest)) {
-    event.respondWith(cacheFirst(req));
+    event.respondWith(staleWhileRevalidate(event, req));
     return;
   }
 
-  // Default: try network, fall back to cache
-  event.respondWith(networkFirst(req));
+  // 4) Default -> Stale-while-revalidate
+  event.respondWith(staleWhileRevalidate(event, req));
 });
 
-/* ------- Strategies ------- */
+/* ---------------- Strategy helpers ---------------- */
 async function cacheFirst(request) {
   const cache = await caches.open(STATIC_CACHE);
   const cached = await cache.match(request, { ignoreVary: true, ignoreSearch: true });
@@ -98,61 +122,55 @@ async function cacheFirst(request) {
   }
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, navFallback = false) {
   const runtime = await caches.open(RUNTIME_CACHE);
   try {
-    const res = await fetch(request);
-    // Cache successful navigations and HTML
+    const res = await fetch(request, { cache: 'no-store' });
     if (res && res.ok && (request.destination === 'document' || isHTMLResponse(res))) {
       runtime.put(request, res.clone());
     }
     return res;
   } catch (err) {
+    // Try runtime, then any cache
     const cached = await runtime.match(request) || await caches.match(request);
-    // Fallback to cached index.html for navigation if available
-    if (!cached && request.mode === 'navigate') {
-      const shell = await caches.match(ABS('index.html'));
-      if (shell) return shell;
+    if (cached) return cached;
+
+    // Friendly fallback for navigation into sub-apps
+    if (navFallback && request.mode === 'navigate') {
+      const p = new URL(request.url).pathname;
+      const shell = await caches.open(STATIC_CACHE);
+      if (p.includes('/sl/')) {
+        const sl = await shell.match(ABS('sl/index.html'));
+        if (sl) return sl;
+      }
+      if (p.includes('/en/')) {
+        const en = await shell.match(ABS('en/index.html'));
+        if (en) return en;
+      }
+      const root = await shell.match(ABS('index.html'));
+      if (root) return root;
     }
-    return cached || Response.error();
+    return Response.error();
   }
 }
 
-async function staleWhileRevalidate(request) {
-  const runtime = await caches.open(RUNTIME_CACHE);
-  const cachedPromise = runtime.match(request);
-  const networkPromise = fetch(request)
-    .then((res) => {
-      if (res && res.ok) runtime.put(request, res.clone());
+function staleWhileRevalidate(event, request) {
+  return (async () => {
+    const cache = await caches.open(RUNTIME_CACHE);
+    const cached = await cache.match(request);
+    const network = fetch(request).then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
       return res;
-    })
-    .catch(() => null);
+    }).catch(() => null);
 
-  const cached = await cachedPromise;
-  if (cached) {
-    // Kick off network update but return cached immediately
-    eventWaitUntil(networkPromise);
-    return cached;
-  }
-  // No cache—use network result
-  const res = await networkPromise;
-  return res || Response.error();
+    // Refresh in background
+    event.waitUntil(network.catch(() => {}));
+
+    return cached || network || fetch(request);
+  })();
 }
 
-/* Helpers */
 function isHTMLResponse(res) {
-  const ctype = res.headers.get('content-type') || '';
+  const ctype = (res.headers.get('content-type') || '').toLowerCase();
   return ctype.includes('text/html');
-}
-
-/** Allow pages to trigger skipWaiting (optional) */
-self.addEventListener('message', (event) => {
-  if (event.data === 'SKIP_WAITING') self.skipWaiting();
-});
-
-/** In SW, event.waitUntil is only available in handlers; provide a safe no-op outside */
-function eventWaitUntil(promise) {
-  // Best-effort: no-op if not in a fetch event context.
-  try { self.addEventListener('dummy', () => {}); } catch (e) {}
-  // There’s no global waitUntil, but we can still run the promise in background.
 }
