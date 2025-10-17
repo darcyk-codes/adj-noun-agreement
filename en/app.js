@@ -311,14 +311,11 @@ function check(){
   const st = window.promptState;
   if (!st) { explain.textContent = 'Create a prompt first.'; return; }
 
-  // Current selections from the reels
-  const a = currentAdj();
-  const n = currentNoun();
+  // Current selections from the reels (groups, not single variants)
+  const a = currentAdj();   // { owner, variants:[{form, gender, number}, ...] }
+  const n = currentNoun();  // { noun, english, gender, number, variants:[{gender, number}, ...] }
 
-  // --- Resolve the intended target noun robustly ---
-  // 1) Preferred: stable Slovene noun id saved by newPrompt(): targetNounId
-  // 2) Fallback: match by English gloss saved by newPrompt(): nounEnglish (case-insensitive)
-  // 3) LAST resort: legacy index if present (for prompts created pre-fix)
+  // --- Resolve intended target noun robustly (immune to sorting) ---
   let target = null;
   if (st.targetNounId) {
     target = NOUN_GROUPS.find(x => x.noun === st.targetNounId) || null;
@@ -328,7 +325,7 @@ function check(){
     target = NOUN_GROUPS.find(x => (x.english || '').trim().toLowerCase() === wantedEn) || null;
   }
   if (!target && typeof st.targetNounIndex === 'number') {
-    target = NOUN_GROUPS[st.targetNounIndex] || null;
+    target = NOUN_GROUPS[st.targetNounIndex] || null; // legacy fallback
   }
   if (!target) {
     resultLine.textContent = '❌ Not quite';
@@ -338,22 +335,34 @@ function check(){
 
   // --- Checks ---
   const ownerOK = !!a && (a.owner === st.owner);
-  const nounOK  = !!n && (n.noun === target.noun);
-  const agreeOK = !!a && !!n && a.variants.some(v => v.gender === n.gender && v.number === n.number);
 
-  const allOK = ownerOK && nounOK && agreeOK;
+  // Accept if adjective matches ANY (gender, number) variant valid for this noun spelling
+  const nounGroup = NOUN_GROUPS.find(x => x.noun === (n?.noun || target.noun));
+  const acceptable = (nounGroup && Array.isArray(nounGroup.variants) && nounGroup.variants.length)
+    ? nounGroup.variants
+    : [{ gender: target.gender, number: target.number }];
+
+  const agreeOK = !!a && Array.isArray(a.variants) && a.variants.some(av =>
+    acceptable.some(nv => av.gender === nv.gender && av.number === nv.number)
+  );
+
+  const nounOK  = !!n && (n.noun === target.noun);
+
+  const allOK = ownerOK && agreeOK && nounOK;
 
   // --- Feedback ---
   resultLine.textContent = allOK ? '✅ Correct' : '❌ Not quite';
 
-  const parts = [];
-  // Prompt summary (for SL mode you may keep this Slovene-oriented form)
-  parts.push(`Prompt: ${st.owner} + “${target.noun}”`);
-  parts.push(
-    `You chose adj: “${a?.form ?? '—'}” (${(a?.owner || '—').toUpperCase()} ${n?.gender ?? '—'}/${n?.number ?? '—'})` +
-    ` and noun: “${n?.noun ?? '—'}” (${n?.gender ?? '—'}/${n?.number ?? '—'}).`
-  );
+  const prettyOwner = (st.owner === 'your-pl') ? 'your (pl.)' : st.owner;
+  const pairsText = acceptable.map(v => `${v.gender}/${v.number}`).join(', ') || '—';
 
+  const chosenAdjForm = a?.form ?? (a?.variants?.[0]?.form ?? '—');
+  const parts = [];
+  parts.push(`Prompt: “${prettyOwner} ${target.english}”`);
+  parts.push(
+    `You chose adj: “${chosenAdjForm}” (${(a?.owner || '—').toUpperCase()}); `
+    + `noun: “${n?.noun ?? '—'}”. (Acceptable agreement: ${pairsText})`
+  );
   if (!ownerOK) parts.push('• The possessive owner does not match the prompt.');
   if (!agreeOK) parts.push('• The adjective must agree with the noun’s gender/number.');
   if (!nounOK)  parts.push(`• The noun should be “${target.noun}” (EN: ${target.english}).`);
