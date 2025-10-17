@@ -1,3 +1,6 @@
+// Resolve repo root even when this page is served from /sl/ or /en/
+const ROOT = location.pathname.replace(/\/(sl|en)\/.*$/, '');
+
 /* ---------- Base adjective forms (flat) ---------- */
 const ADJECTIVES_RAW = [
   { form:"moj",   gender:"m", number:"sg", owner:"my" },
@@ -371,7 +374,7 @@ function buildAll(){
 /* ---------- Provided lists loader (nouns/manifest.json) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch('./nouns/manifest.json', {cache:'no-cache'});
+    const res = await fetch(`${ROOT}/nouns/manifest.json`, {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');
@@ -382,7 +385,7 @@ async function loadProvidedIndex(){
       const label = it.label || (it.file ? it.file : path.split('/').pop());
       if (!path) continue;
       const o = document.createElement('option');
-      o.value = path;
+      o.value = `${ROOT}/${path}`;
       o.textContent = label;
       providedSelect.appendChild(o);
     }
@@ -577,7 +580,7 @@ loadProvidedIndex();
 
   window.addEventListener('load', async () => {
     try{
-      const reg = await navigator.serviceWorker.register('./service-worker.js');
+      const reg = await navigator.serviceWorker.register(`${ROOT}/service-worker.js`);
       console.log('[SW] registered', reg.scope);
 
       reg.addEventListener('updatefound', () => {
