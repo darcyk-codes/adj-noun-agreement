@@ -84,13 +84,45 @@ const ADJECTIVES_RAW = [
 function shuffle(a){ const c=a.slice(); for(let i=c.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [c[i],c[j]]=[c[j],c[i]];} return c; }
 function mod(n,m){ return ((n % m) + m) % m; }
 
+
 function groupAdjectives(rows){
-  const map=new Map();
-  for(const r of rows){
-    const key = `${r.form}||${r.owner}`;
-    if(!map.has(key)) map.set(key, { form:r.form, owner:r.owner, variants:[] });
-    map.get(key).variants.push({ gender:r.gender, number:r.number });
+  // Consolidate by surface form only; merge owners and (gender,number) variants
+  const norm = (s)=> (s||"").normalize('NFC').trim().toLowerCase();
+  const map = new Map();
+
+  for(const r of rows||[]){
+    if(!r || !r.form) continue;
+    const key = norm(r.form);
+    if(!map.has(key)){
+      map.set(key, { form: r.form, owners: [], variants: [] });
+    }
+    const e = map.get(key);
+
+    // keep first-seen casing for display
+    if (!e.form) e.form = r.form;
+
+    // owners
+    if (r.owner && !e.owners.includes(r.owner)) e.owners.push(r.owner);
+
+    // variants
+    const g = (r.gender||'').trim();
+    const n = (r.number||'').trim();
+    if (g && n && !e.variants.some(v=>v.gender===g && v.number===n)){
+      e.variants.push({ gender:g, number:n });
+    }
   }
+
+  // Stable sort of variants within each entry
+  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
+  const out = Array.from(map.values()).map(e=>{
+    e.variants.sort((a,b)=> (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
+    return e;
+  });
+
+  // Sort entries by display form
+  out.sort((a,b)=> a.form.localeCompare(b.form, undefined, {sensitivity:'base'}));
+  return out;
+}
   const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
   return Array.from(map.values()).map(x=>{
     const seen=new Set();
@@ -101,19 +133,62 @@ function groupAdjectives(rows){
   });
 }
 
+
 function groupNouns(rows){
-  const map=new Map(), conflicts=[];
-  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
-  for(const r of rows){
+  // Consolidate nouns by surface spelling (case-insensitive, NFC, trimmed)
+  const norm = (s)=> (s||'').normalize('NFC').trim().toLowerCase();
+  const map = new Map();
+  const conflicts = [];
+  const gOrder = { m:0, f:1, n:2 };
+  const nOrder = { sg:0, pl:1, du:2 };
+
+  for(const r of rows || []){
     if(!r || !r.noun) continue;
-    const key=r.noun.normalize('NFC');
+    const key = norm(r.noun);
     if(!map.has(key)){
-      map.set(key, { noun:key, english:r.english, variants:[{gender:r.gender, number:r.number}] });
-    } else {
-      const e=map.get(key);
-      if(e.english !== r.english) conflicts.push({noun:key, first:e.english, other:r.english});
-      e.variants.push({gender:r.gender, number:r.number});
+      map.set(key, {
+        noun: r.noun,                // keep first-seen casing
+        english: r.english || '',
+        variants: []
+      });
     }
+    const e = map.get(key);
+
+    // Track English gloss; warn on conflicting non-empty alternatives
+    if (r.english && e.english && r.english !== e.english){
+      conflicts.push({ noun: e.noun, first: e.english, other: r.english });
+      // keep first, ignore others (consistent with previous behavior)
+    } else if (!e.english && r.english){
+      e.english = r.english;
+    }
+
+    const g = (r.gender || '').trim();
+    const n = (r.number || '').trim();
+    if (g && n && !e.variants.some(v => v.gender === g && v.number === n)){
+      e.variants.push({ gender: g, number: n });
+    }
+  }
+
+  const groups = Array.from(map.values()).map(x => {
+    const seen = new Set();
+    x.variants = x.variants
+      .filter(v => { const k = v.gender + '|' + v.number; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a,b) => (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
+    return x;
+  });
+
+  if (conflicts.length){
+    const msg = conflicts.slice(0,6).map(c => `• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('
+');
+    alert('Some nouns had conflicting English glosses. Using the first value found.
+' + msg + (conflicts.length>6?'
+…':''));
+  }
+
+  // Sort by display form (case-insensitive, locale-aware)
+  groups.sort((a,b) => a.noun.localeCompare(b.noun, undefined, { sensitivity:'base' }));
+  return groups;
+}
   }
   const groups=Array.from(map.values()).map(x=>{
     const seen=new Set();
@@ -197,12 +272,12 @@ function clearPromptUI(){
 function reelsShowEnglish(){ return mode === MODES.SL_TO_EN; }
 
 function ownerLabelEN(owner){
-  return owner === 'your-pl' ? 'YOUR (PL.)' : String(owner).toUpperCase();
+  return owner === 'your-pl' ? 'your (pl.)' : String(owner);
 }
 
 function displayAdj(adj){
   if (!adj) return '—';
-  return reelsShowEnglish() ? ownerLabelEN(adj.owner) : adj.form;
+  return reelsShowEnglish() ? ownerLabelEN((adj.owner ?? (adj.owners && adj.owners[0]) ?? '')) : adj.form;
 }
 
 function displayNoun(group){
@@ -359,7 +434,7 @@ function check(){
     return;
   }
 
-  const ownerOK = !!a && (a.owner === st.owner);
+  const ownerOK = !!a && ((a.owner === st.owner) || (Array.isArray(a.owners) && a.owners.includes(st.owner)));
 
   const nounGroup = NOUN_GROUPS.find(x => x.noun === (n?.noun || target.noun));
   const acceptable = (nounGroup && Array.isArray(nounGroup.variants) && nounGroup.variants.length)
