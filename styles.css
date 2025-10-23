@@ -79,27 +79,12 @@ input[type="file"]{display:none}
   margin-top: 10px;}
 
 /* === Full iframe display: no height restriction, no inner scrollbar === */
-
-/* Main container should not constrain height */
-.frames {
-  display: block;
-  width: 100%;
-  height: auto !important;
-  overflow: visible !important;
-}
-
-/* Iframes should size freely with their content */
-.frames iframe {
-  display: block;
-  width: 100%;
-  border: none;
-  height: auto !important;     /* removes fixed height behavior */
-  min-height: 100vh;           /* ensures at least full viewport height */
-  overflow: visible !important;
-}
-
-/* Hide inactive iframe without affecting layout */
-.frames iframe.hidden {
-  display: none !important;
-}
+.frame {
+      position: fixed;
+      inset: 56px 0 0 0; /* header is ~56px tall */
+      width: 100%;
+      height: calc(100vh - 56px);
+      border: 0;
+    }
+    .hidden { display: none; }
 
