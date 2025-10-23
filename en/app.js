@@ -178,11 +178,8 @@ function groupNouns(rows){
   });
 
   if (conflicts.length){
-    const msg = conflicts.slice(0,6).map(c => `• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('
-');
-    alert('Some nouns had conflicting English glosses. Using the first value found.
-' + msg + (conflicts.length>6?'
-…':''));
+    const msg = conflicts.slice(0,6).map(c => `• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('\\n');
+    alert('Some nouns had conflicting English glosses. Using the first value found.\n' + msg + (conflicts.length>6?'\n…':''));
   }
 
   // Sort by display form (case-insensitive, locale-aware)
