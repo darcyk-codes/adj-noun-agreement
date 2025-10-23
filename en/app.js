@@ -120,19 +120,65 @@ function groupAdjectives(rows){
   return out;
 }
 
+
 function groupNouns(rows){
-  const map=new Map(), conflicts=[];
-  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
-  for(const r of rows){
+  // Consolidate nouns by surface spelling (case-insensitive, NFC, trimmed)
+  const norm = (s)=> (s||'').normalize('NFC').trim().toLowerCase();
+  const map = new Map();
+  const conflicts = [];
+  const gOrder = { m:0, f:1, n:2 };
+  const nOrder = { sg:0, pl:1, du:2 };
+
+  for(const r of rows || []){
     if(!r || !r.noun) continue;
-    const key=r.noun.normalize('NFC');
+    const key = norm(r.noun);
     if(!map.has(key)){
-      map.set(key, { noun:key, english:r.english, variants:[{gender:r.gender, number:r.number}] });
-    } else {
-      const e=map.get(key);
-      if(e.english !== r.english) conflicts.push({noun:key, first:e.english, other:r.english});
-      e.variants.push({gender:r.gender, number:r.number});
+      map.set(key, {
+        noun: r.noun,                // keep first-seen display casing
+        english: r.english || '',
+        variants: []
+      });
     }
+    const e = map.get(key);
+
+    // Update display noun if missing (shouldn't happen) but preserve first casing
+    if (!e.noun) e.noun = r.noun;
+
+    // Track English gloss; warn on conflicting non-empty alternatives
+    if (r.english && e.english && r.english !== e.english){
+      conflicts.push({ noun: e.noun, first: e.english, other: r.english });
+      // keep first, ignore others
+    } else if (!e.english && r.english){
+      e.english = r.english;
+    }
+
+    const g = (r.gender || '').trim();
+    const n = (r.number || '').trim();
+    if (g && n && !e.variants.some(v => v.gender === g && v.number === n)){
+      e.variants.push({ gender: g, number: n });
+    }
+  }
+
+  const groups = Array.from(map.values()).map(x => {
+    const seen = new Set();
+    x.variants = x.variants
+      .filter(v => { const k = v.gender + '|' + v.number; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((a,b) => (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
+    return x;
+  });
+
+  if (conflicts.length){
+    const msg = conflicts.slice(0,6).map(c => `• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('
+');
+    alert('Some nouns had conflicting English glosses. Using the first value found.
+' + msg + (conflicts.length>6?'
+…':''));
+  }
+
+  // Sort by display form (case-insensitive, locale-aware)
+  groups.sort((a,b) => a.noun.localeCompare(b.noun, undefined, { sensitivity:'base' }));
+  return groups;
+}
   }
   const groups=Array.from(map.values()).map(x=>{
     const seen=new Set();
@@ -222,7 +268,7 @@ function ownerLabelEN(owner){
 function displayAdj(adj){
   if (!adj) return '—';
   const own = (adj.owner ?? (Array.isArray(adj.owners) && adj.owners[0]) ?? '');
-  return reelsShowEnglish() ? ownerLabelEN(own) : adj.form;
+  return reelsShowEnglish() ? ownerLabelEN(own) : String(adj.form || '').toLowerCase();
 }
 
 function displayNoun(group){
