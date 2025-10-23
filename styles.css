@@ -78,4 +78,28 @@ input[type="file"]{display:none}
   gap: 8px;
   margin-top: 10px;}
 
-/* (already present in your file) */
+/* === Full iframe display: no height restriction, no inner scrollbar === */
+
+/* Main container should not constrain height */
+.frames {
+  display: block;
+  width: 100%;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+/* Iframes should size freely with their content */
+.frames iframe {
+  display: block;
+  width: 100%;
+  border: none;
+  height: auto !important;     /* removes fixed height behavior */
+  min-height: 100vh;           /* ensures at least full viewport height */
+  overflow: visible !important;
+}
+
+/* Hide inactive iframe without affecting layout */
+.frames iframe.hidden {
+  display: none !important;
+}
+
