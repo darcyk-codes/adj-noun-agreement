@@ -2,10 +2,11 @@
 const ROOT = location.pathname.replace(/\/(sl|en)(?:\/.*)?$/, '');
 
 // --- language and URL helpers ---
-const APP_VERSION = '2025-10-23-2'; // bump when you deploy
+const APP_VERSION = '2025-10-23-5'; // bump when you deploy
 const MODES = { EN_TO_SL: 'EN>SL', SL_TO_EN: 'SL>EN' };
 
 // For the /SL/ build, default to SL>EN (prompts in Slovene, reels are Slovene)
+// NOTE: This file is adapted for /SN/ build but keeps both modes working.
 let mode = MODES.SL_TO_EN;
 let dataLoadedFor = null; // remembers which dir we last loaded
 
@@ -209,6 +210,29 @@ function adjFormFor(owner, g, n){
   return hit?.form || null;
 }
 
+/* === NEW: reel display helpers (mode-aware) =============================== */
+// Reels show the answer language (opposite of prompt language):
+// Prompt EN => reels SL; Prompt SL => reels EN
+function reelsShowEnglish(m = mode) {
+  return m === MODES.SL_TO_EN; // SL>EN prompt => reels in English
+}
+function ownerLabelEN(owner) {
+  return owner === 'your-pl' ? 'YOUR (PL.)' : String(owner).toUpperCase();
+}
+function displayAdj(adj, m = mode) {
+  if (!adj) return '—';
+  return reelsShowEnglish(m) ? ownerLabelEN(adj.owner) : adj.form;
+}
+function displayNoun(nounGroup, m = mode) {
+  if (!nounGroup) return '—';
+  return reelsShowEnglish(m) ? (nounGroup.english || '—') : nounGroup.noun;
+}
+function collatorForMode() {
+  // Use English collation when reels show English, Slovene otherwise
+  return new Intl.Collator(reelsShowEnglish() ? 'en' : 'sl', { sensitivity: 'base' });
+}
+/* ======================================================================== */
+
 /* ---------- Reels rendering ---------- */
 function centerOffsetFor(trackEl){
   const ITEM_H = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--itemH')) || 44;
@@ -300,14 +324,16 @@ function renderNounVariants(container, variants){
 function currentAdj(){ return ADJ_GROUPS[mod(adjPos, adjLen)]; }
 function currentNoun(){ return NOUN_GROUPS[mod(nounPos, nounLen)]; }
 
+/* === UPDATED: badges use mode-aware display ============================== */
 function updateBadges(){
   const a=currentAdj(), n=currentNoun();
-  adjBadge.textContent = a ? `Selected: ${a.form}` : 'Selected: —';
-  nounBadge.textContent = n ? `Selected: ${n.noun}` : 'Selected: —';
+  adjBadge.textContent = `Selected: ${a ? displayAdj(a) : '—'}`;
+  nounBadge.textContent = `Selected: ${n ? displayNoun(n) : '—'}`;
   if (a) renderAdjVariants(adjKeys, a.variants); else adjKeys.innerHTML='';
   if (n) renderNounVariants(nounKeys, n.variants); else nounKeys.innerHTML='';
   btnShowHints.textContent = `Show Hints: ${showHints?'ON':'OFF'}`;
 }
+/* ======================================================================== */
 
 /* ---------- Prompt & feedback (SL prompts) ---------- */
 function ownerLabel(owner){ return owner === 'your-pl' ? 'vi' : String(owner).toUpperCase(); }
@@ -399,7 +425,7 @@ function check(){
   explain.textContent = parts.join(' ');
 }
 
-/* ---------- Sorting logic ---------- */
+/* ---------- Sorting logic (mode-aware for A–Z) ---------- */
 function sortAdj(modeSel){
   adjSortMode = modeSel;
   btnAdjSort.textContent = `Adj order: ${modeSel==='alpha'?'A–Z':'Random'}`;
@@ -407,16 +433,17 @@ function sortAdj(modeSel){
   const current = currentAdj(); // remember current selection to preserve it
   let next = [];
   if (modeSel === 'alpha') {
-    next = [...ADJ_GROUPS_BASE].sort((a,b)=> a.form.localeCompare(b.form,'sl',{sensitivity:'base'}));
+    const coll = collatorForMode();
+    next = [...ADJ_GROUPS_BASE].sort((a,b)=> coll.compare(displayAdj(a), displayAdj(b)));
   } else {
     next = shuffle(ADJ_GROUPS_BASE);
   }
   ADJ_GROUPS = next;
   adjLen = ADJ_GROUPS.length;
 
-  // rebuild track
+  // rebuild track (mode-aware labels)
   const targetIndex = current ? ADJ_GROUPS.findIndex(x => x.form===current.form && x.owner===current.owner) : 0;
-  buildReel(adjTrack, ADJ_GROUPS, a=>a.form);
+  buildReel(adjTrack, ADJ_GROUPS, a=>displayAdj(a));
   adjPos = 2*adjLen + (targetIndex>=0?targetIndex:0);
   requestAnimationFrame(()=>{ adjPos = renderByPos(adjTrack, adjLen, adjPos); updateBadges(); });
 }
@@ -428,7 +455,8 @@ function sortNoun(modeSel){
   const current = currentNoun();
   let next = [];
   if (modeSel === 'alpha') {
-    next = [...NOUN_GROUPS_BASE].sort((a,b)=> a.noun.localeCompare(b.noun,'sl',{sensitivity:'base'}));
+    const coll = collatorForMode();
+    next = [...NOUN_GROUPS_BASE].sort((a,b)=> coll.compare(displayNoun(a), displayNoun(b)));
   } else {
     next = shuffle(NOUN_GROUPS_BASE);
   }
@@ -436,7 +464,7 @@ function sortNoun(modeSel){
   nounLen = NOUN_GROUPS.length;
 
   const targetIndex = current ? NOUN_GROUPS.findIndex(x => x.noun===current.noun) : 0;
-  buildReel(nounTrack, NOUN_GROUPS, n=>n.noun);
+  buildReel(nounTrack, NOUN_GROUPS, n=>displayNoun(n));
   nounPos = 2*nounLen + (targetIndex>=0?targetIndex:0);
   requestAnimationFrame(()=>{ nounPos = renderByPos(nounTrack, nounLen, nounPos); updateBadges(); });
 }
@@ -447,6 +475,16 @@ function buildAll(){
   sortAdj(adjSortMode);
   sortNoun(nounSortMode);
 }
+
+/* === NEW: rerender after mode changes (keeps selection) ================== */
+function rerenderReelsForMode(){
+  buildReel(adjTrack, ADJ_GROUPS, a => displayAdj(a));
+  buildReel(nounTrack, NOUN_GROUPS, n => displayNoun(n));
+  adjPos  = renderByPos(adjTrack,  adjLen,  adjPos);
+  nounPos = renderByPos(nounTrack, nounLen, nounPos);
+  updateBadges();
+}
+/* ======================================================================== */
 
 /* ---------- Language data loader (await before rendering) ---------- */
 async function loadLanguageData(m = mode) {

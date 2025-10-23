@@ -1,5 +1,5 @@
 /* service-worker.js — root-safe for GitHub Pages, with sub-app support */
-const VERSION = 'v1.4.5';
+const VERSION = 'v1.4.6';
 const STATIC_CACHE  = `pmatch-static-${VERSION}`;
 const RUNTIME_CACHE = `pmatch-runtime-${VERSION}`;
 

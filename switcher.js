@@ -1,43 +1,105 @@
-// Persisted key for mode
-const KEY = "pm_prompt_mode"; // 'sl' | 'en'
+// Root page mode switcher for two iframe apps.
+// Expects #frame-en, #frame-sl, #btn-en, #btn-sl to exist.
 
-// Elements
-const btnSL = document.getElementById("btn-sl");
-const btnEN = document.getElementById("btn-en");
-const frameSL = document.getElementById("frame-sl");
-const frameEN = document.getElementById("frame-en");
-const status = document.getElementById("status");
+(function () {
+  const VERSION = '2025-10-23-4';           // bump when deploying
+  const LS_KEY  = 'prompter:mode';          // persisted mode
+  const MODES   = { EN: 'en', SL: 'sl' };   // URL ?mode=en|sl
 
-// Apply a mode to the UI
-function apply(mode, announce = false) {
-  const isSL = mode === "sl";
-  btnSL.setAttribute("aria-pressed", String(isSL));
-  btnEN.setAttribute("aria-pressed", String(!isSL));
+  const frameEN = document.getElementById('frame-en');
+  const frameSL = document.getElementById('frame-sl');
+  const btnEN   = document.getElementById('btn-en');
+  const btnSL   = document.getElementById('btn-sl');
 
-  frameSL.classList.toggle("hidden", !isSL);
-  frameEN.classList.toggle("hidden", isSL);
+  // --- Utilities -----------------------------------------------------------
 
-  // Persist + reflect in URL for shareability
-  localStorage.setItem(KEY, mode);
-  const url = new URL(window.location.href);
-  url.searchParams.set("mode", mode);
-  window.history.replaceState({}, "", url.toString());
-
-  if (announce && status) {
-    status.textContent = isSL ? "Mode: Slovene → English" : "Mode: English → Slovene";
-    // Clear announcement after a moment to keep header tidy
-    setTimeout(() => (status.textContent = ""), 1500);
+  function getUrlMode() {
+    const p = new URLSearchParams(location.search);
+    const m = (p.get('mode') || '').toLowerCase();
+    return (m === MODES.EN || m === MODES.SL) ? m : null;
   }
-}
 
-// Handlers
-btnSL.addEventListener("click", () => apply("sl", true));
-btnEN.addEventListener("click", () => apply("en", true));
+  function setUrlMode(mode, replace = false) {
+    const url = new URL(location.href);
+    url.searchParams.set('mode', mode);
+    if (replace) history.replaceState({}, '', url);
+    else history.pushState({}, '', url);
+  }
 
-// Initialize from URL ?mode=… or localStorage (default 'sl')
-(function init() {
-  const url = new URL(window.location.href);
-  const fromUrl = url.searchParams.get("mode");
-  const stored = localStorage.getItem(KEY);
-  apply((fromUrl === "sl" || fromUrl === "en") ? fromUrl : (stored || "sl"));
+  function getPersistedMode() {
+    try { return localStorage.getItem(LS_KEY); } catch { return null; }
+  }
+  function setPersistedMode(mode) {
+    try { localStorage.setItem(LS_KEY, mode); } catch {}
+  }
+
+  function setFrameSrcOnce(frame, url) {
+    if (!frame || !url) return;
+    const current = new URL(frame.src || location.href, location.href).href;
+    const next    = new URL(url, location.href).href;
+    if (current !== next) frame.src = url;
+  }
+
+  function focusVisibleFrame(frameEl) {
+    try {
+      frameEl.focus();
+      frameEl.contentWindow?.focus();
+      // Optional: tell the child to announce mode via its own aria-live region
+      frameEl.contentWindow?.postMessage({ type: 'ANNOUNCE_MODE' }, '*');
+    } catch {}
+  }
+
+  function setActiveButton(mode) {
+    const isEN = (mode === MODES.EN);
+    btnEN.classList.toggle('active', isEN);
+    btnSL.classList.toggle('active', !isEN);
+    btnEN.setAttribute('aria-selected', isEN ? 'true' : 'false');
+    btnSL.setAttribute('aria-selected', !isEN ? 'true' : 'false');
+  }
+
+  function showMode(mode) {
+    const isEN = (mode === MODES.EN);
+    frameEN.classList.toggle('hidden', !isEN);
+    frameSL.classList.toggle('hidden', isEN);
+    focusVisibleFrame(isEN ? frameEN : frameSL);
+    setActiveButton(mode);
+  }
+
+  // --- Core apply() --------------------------------------------------------
+
+  function apply(mode, { updateUrl = true, replaceUrl = false } = {}) {
+    // 1) Persist + normalize URL
+    setPersistedMode(mode);
+    if (updateUrl) setUrlMode(mode, replaceUrl);
+
+    // 2) Ensure iframe src URLs include version param (avoid stale documents)
+    setFrameSrcOnce(frameEN, `en/index.html?v=${VERSION}`);
+    setFrameSrcOnce(frameSL, `sl/index.html?v=${VERSION}`);
+
+    // 3) Show/hide + focus
+    showMode(mode);
+  }
+
+  // --- Button events -------------------------------------------------------
+
+  btnEN?.addEventListener('click', () => apply(MODES.EN));
+  btnSL?.addEventListener('click', () => apply(MODES.SL));
+
+  // Handle back/forward navigation keeping state in sync
+  window.addEventListener('popstate', () => {
+    const urlMode = getUrlMode();
+    if (urlMode) apply(urlMode, { updateUrl: false });
+  });
+
+  // --- Boot ---------------------------------------------------------------
+
+  (function boot() {
+    // Prefer URL -> then localStorage -> fallback to 'sl'
+    const urlMode = getUrlMode();
+    const saved   = getPersistedMode();
+
+    const initial = urlMode || saved || MODES.SL; // start in SL→EN by default
+    // Normalize URL without polluting history on first load
+    apply(initial, { updateUrl: true, replaceUrl: !urlMode });
+  })();
 })();

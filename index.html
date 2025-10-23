@@ -1,90 +1,132 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Possessive Match — Slovene Nouns</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="light dark" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Prompter</title>
+
   <style>
     :root {
-      --border: #e5e7eb;
-      --text: #111827;
-      --muted: #6b7280;
-      --bg: #ffffff;
-      --bg-pressed: #f3f4f6;
-      --focus: #2563eb;
+      --bg: #0f1115;
+      --card: #171923;
+      --muted: #8b8d98;
+      --text: #e7e9ee;
+      --accent: #4f8cff;
+      --border: #252838;
+      --btn-radius: 12px;
+      --frame-min-h: 68vh;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --border: #374151;
-        --text: #e5e7eb;
-        --muted: #9ca3af;
-        --bg: #111827;
-        --bg-pressed: #1f2937;
-        --focus: #60a5fa;
-      }
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
+    html, body {
       margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-      color: var(--text);
+      padding: 0;
+      height: 100%;
       background: var(--bg);
+      color: var(--text);
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrap {
+      max-width: 1100px; margin: 0 auto; padding: 20px;
     }
     header {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg);
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 12px;
     }
-    .title { font-weight: 600; letter-spacing: 0.2px; }
-    .controls { display: flex; gap: 8px; align-items: center; }
-    .btn {
-      padding: 8px 12px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--bg);
-      color: var(--text);
-      cursor: pointer;
-      font-weight: 500;
+    .title { font-weight: 700; letter-spacing: .2px; }
+    .modebar {
+      display: flex; gap: 8px; align-items: center; background: var(--card);
+      border: 1px solid var(--border); padding: 6px; border-radius: var(--btn-radius);
     }
-    .btn[aria-pressed="true"] { background: var(--bg-pressed); }
-    .btn:focus-visible {
-      outline: 2px solid var(--focus);
-      outline-offset: 2px;
+    .modebar button {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); border-radius: var(--btn-radius);
+      padding: 8px 12px; cursor: pointer;
     }
-    .hint { font-size: 12px; color: var(--muted); }
-    .frame {
-      position: fixed;
-      inset: 56px 0 0 0; /* header is ~56px tall */
-      width: 100%;
-      height: calc(100vh - 56px);
-      border: 0;
+    .modebar button.active {
+      background: var(--accent); border-color: var(--accent); color: white;
     }
-    .hidden { display: none; }
+    .frames {
+      display: grid; grid-template-columns: 1fr; gap: 12px;
+    }
+    iframe {
+      width: 100%; min-height: var(--frame-min-h); border: 1px solid var(--border);
+      border-radius: 14px; background: #0a0c12;
+    }
+    .hidden { display: none !important; }
+
+    /* tiny update toast, if you decide to use it later */
+    .update-toast {
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: 16px; background: var(--card); color: var(--text);
+      border: 1px solid var(--border); padding: 10px 12px; border-radius: 12px;
+      display: flex; gap: 10px; align-items: center; z-index: 9999;
+    }
+    .update-toast .btn {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; cursor: pointer;
+    }
+    .update-toast .btn.primary {
+      background: var(--accent); border-color: var(--accent); color: #fff;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="title">Possessive Match — Slovene Nouns</div>
-    <div class="controls" role="group" aria-label="Prompt mode">
-      <button id="btn-sl" class="btn" aria-pressed="true" title="Slovene → English">SL → EN</button>
-      <button id="btn-en" class="btn" aria-pressed="false" title="English → Slovene">EN → SL</button>
-      <span class="hint" id="status" aria-live="polite"></span>
-    </div>
-  </header>
+  <div class="wrap">
+    <header>
+      <div class="title">Prompter</div>
+      <div class="modebar" role="tablist" aria-label="Modes">
+        <button id="btn-en" role="tab" aria-selected="false">EN → SL</button>
+        <button id="btn-sl" role="tab" aria-selected="false">SL → EN</button>
+      </div>
+    </header>
 
-  <!-- Each mode runs in its own isolated document/runtime -->
-  <iframe id="frame-sl" class="frame" src="sl/index.html" title="SL → EN" loading="eager"></iframe>
-  <iframe id="frame-en" class="frame hidden" src="en/index.html" title="EN → SL" loading="lazy"></iframe>
+    <main class="frames">
+      <!-- NOTE: we attach the version param from switcher.js to avoid stale iframes -->
+      <iframe id="frame-en" title="English to Slovene" tabindex="0" class="hidden" loading="eager"></iframe>
+      <iframe id="frame-sl" title="Slovene to English" tabindex="0" loading="lazy"></iframe>
+    </main>
+  </div>
 
-  <script type="module" src="./switcher.js"></script>
+  <!-- Root-only SW registration (single source of truth) -->
+  <script>
+    (function registerRootSW() {
+      if (!('serviceWorker' in navigator)) return;
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        location.reload();
+      });
+
+      window.addEventListener('load', async () => {
+        try {
+          // Cache-bust in case the SW itself is cached by a CDN
+          const v = '2025-10-23-4';
+          const reg = await navigator.serviceWorker.register(`./service-worker.js?v=${v}`);
+          // Periodic update checks
+          setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().catch(() => {});
+          });
+
+          // Optional: if your SW posts messages like 'SW_WAITING'
+          navigator.serviceWorker.addEventListener('message', (e) => {
+            if (e.data === 'SW_WAITING' && reg.waiting) {
+              // You can show a toast here; for now, apply immediately:
+              reg.waiting.postMessage('SKIP_WAITING');
+            }
+          });
+        } catch (err) {
+          console.warn('[SW] registration failed', err);
+        }
+      });
+    })();
+  </script>
+
+  <!-- Switcher logic -->
+  <script src="./switcher.js" defer></script>
 </body>
 </html>
