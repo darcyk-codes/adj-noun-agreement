@@ -90,41 +90,41 @@
   </div>
 
   <!-- Root-only SW registration (single source of truth) -->
-  <script>
-    (function registerRootSW() {
-      if (!('serviceWorker' in navigator)) return;
+<script>
+  // TEMP breaker: add ?nosw=1 to the URL to bypass SW entirely
+  if (new URLSearchParams(location.search).has('nosw')) {
+    window.__NO_SW__ = true;
+  }
+</script>
 
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        refreshing = true;
-        location.reload();
-      });
+<script>
+  (function registerRootSW() {
+    if (window.__NO_SW__) return;     // <— breaker
+    if (!('serviceWorker' in navigator)) return;
 
-      window.addEventListener('load', async () => {
-        try {
-          // Cache-bust in case the SW itself is cached by a CDN
-          const v = '2025-10-23-4';
-          const reg = await navigator.serviceWorker.register(`./service-worker.js?v=${v}`);
-          // Periodic update checks
-          setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
-          document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') reg.update().catch(() => {});
-          });
+    let reloaded = sessionStorage.getItem('sw-reloaded') === '1';
 
-          // Optional: if your SW posts messages like 'SW_WAITING'
-          navigator.serviceWorker.addEventListener('message', (e) => {
-            if (e.data === 'SW_WAITING' && reg.waiting) {
-              // You can show a toast here; for now, apply immediately:
-              reg.waiting.postMessage('SKIP_WAITING');
-            }
-          });
-        } catch (err) {
-          console.warn('[SW] registration failed', err);
-        }
-      });
-    })();
-  </script>
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;           // <— only reload once per tab
+      reloaded = true;
+      sessionStorage.setItem('sw-reloaded', '1');
+      location.reload();
+    });
+
+    window.addEventListener('load', async () => {
+      try {
+        const v = '2025-10-23-4';
+        const reg = await navigator.serviceWorker.register(`./service-worker.js?v=${v}`);
+        // Optional: only auto-apply an update once per page load
+        navigator.serviceWorker.addEventListener('message', (e) => {
+          if (e.data === 'SW_WAITING' && reg.waiting && !reloaded) {
+            reg.waiting.postMessage('SKIP_WAITING');
+          }
+        });
+      } catch {}
+    });
+  })();
+</script>
 
   <!-- Switcher logic -->
   <script src="./switcher.js" defer></script>
