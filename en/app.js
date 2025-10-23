@@ -1,20 +1,31 @@
-// --- Basic setup (this file is used inside /en/index.html iframe) ---
+// --- Basic setup (this file runs inside /en/index.html iframe) ---
 
-// Infer which iframe folder we’re in ('en' or 'sl') just in case you reuse this file.
-// For the /EN/ app, this will be 'en' and we default to EN→SL mode.
+// Infer which iframe folder we’re in ('en' or 'sl'); default EN→SL for /en/
 const CUR_DIR = location.pathname.split('/').slice(-2, -1)[0]; // 'en' or 'sl'
-
-// Modes: EN→SL (prompt in English, reels show Slovene) OR SL→EN (prompt in Slovene, reels show English)
 const MODES = { EN_TO_SL: 'EN>SL', SL_TO_EN: 'SL>EN' };
-let mode = (CUR_DIR === 'sl') ? MODES.SL_TO_EN : MODES.EN_TO_SL; // For /en/, this is EN→SL
+let mode = (CUR_DIR === 'sl') ? MODES.SL_TO_EN : MODES.EN_TO_SL;
 
-const APP_VERSION = '2025-10-23-5'; // bump when deploying to bust caches
+// ===== Version + ROOT helpers (shared between /en and /sl) =====
+const APP_VERSION =
+  new URLSearchParams(location.search).get('v') ||
+  (window.parent && window.parent.__APP_VERSION) ||
+  '0';
 
-// Build a cache-busted URL *relative to this iframe folder* (no 'en/' prefix)
-function langUrl(relPath) {
-  const q = `v=${encodeURIComponent(APP_VERSION)}`;
-  const sep = relPath.includes('?') ? '&' : '?';
-  return `${relPath}${sep}${q}`;
+// Compute repo ROOT (e.g., "/adj-noun-agreement"), stripping "/en/..." or "/sl/..."
+const ROOT = location.pathname.replace(/\/(en|sl)(?:\/.*)?$/, '');
+
+// Root-relative URL (for files that live at the app root: manifest.json, nouns/*)
+function rootUrl(relPath) {
+  const clean = String(relPath).replace(/^\/+/, '');
+  const sep = clean.includes('?') ? '&' : '?';
+  return `${ROOT}/${clean}${sep}v=${encodeURIComponent(APP_VERSION)}`;
+}
+
+// Folder-local URL (if you ever need something inside /en or /sl)
+function localUrl(relPath) {
+  const clean = String(relPath).replace(/^\/+/, '');
+  const sep = clean.includes('?') ? '&' : '?';
+  return `${clean}${sep}v=${encodeURIComponent(APP_VERSION)}`;
 }
 
 /* ---------- Adjectives ---------- */
@@ -183,7 +194,6 @@ function clearPromptUI(){
 }
 
 // Reel display language = opposite of the prompt language
-// EN→SL prompt => reels show Slovene (false); SL→EN => reels show English (true)
 function reelsShowEnglish(){ return mode === MODES.SL_TO_EN; }
 
 function ownerLabelEN(owner){
@@ -441,15 +451,19 @@ function rerenderReelsForMode(){
 
 /* ---------- Data loading (manifest + nouns) ---------- */
 async function loadLanguageData() {
-  // 1) Load manifest from the root (e.g., ../manifest.json)
+  // 1) Load manifest from the ROOT (e.g., /manifest.json)
   let nounsUrl = null;
   try {
-    const manifestResp = await fetch(langUrl('../manifest.json'), { cache: 'no-store' });
+    const manifestResp = await fetch(rootUrl('manifest.json'), { cache: 'no-store' });
     if (!manifestResp.ok) throw new Error(`Failed manifest: ${manifestResp.status}`);
     const manifest = await manifestResp.json();
 
-    // Expect: { "nouns": "nouns.json" } — adjectives are static in this app
-    nounsUrl = manifest.nouns ? langUrl(manifest.nouns) : null;
+    // Expect: { "nouns": "nouns/nouns.json" } — adjectives are static in this app
+    if (manifest && manifest.nouns) {
+      nounsUrl = /^https?:\/\//i.test(manifest.nouns)
+        ? manifest.nouns
+        : rootUrl(manifest.nouns);
+    }
   } catch (e) {
     console.warn('manifest.json not found/invalid, using built-in fallback.', e);
   }
@@ -475,10 +489,10 @@ async function loadLanguageData() {
   clearPromptUI();
 }
 
-/* ---------- Provided lists (scoped to /en/) ---------- */
+/* ---------- Provided lists (shared at ROOT /nouns/) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch(langUrl('../nouns/manifest.json'), {cache:'no-cache'});
+    const res = await fetch(rootUrl('nouns/manifest.json'), {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');
@@ -487,7 +501,7 @@ async function loadProvidedIndex(){
     for (const it of items){
       const rel = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
       const label = it.label || (it.file ? it.file : rel.split('/').pop());
-      const url = langUrl(rel);
+      const url = rootUrl(rel); // NOTE: root, not local
       const o = document.createElement('option');
       o.value = url;
       o.textContent = label;
@@ -500,7 +514,7 @@ async function loadProvidedIndex(){
     providedSelect.innerHTML = '<option>No provided lists found</option>';
     providedSelect.disabled = true;
     loadProvidedBtn.disabled = true;
-    providedHint.textContent = 'Tip: add en/nouns/manifest.json to list your CSVs.';
+    providedHint.textContent = 'Tip: add nouns/manifest.json at the app root.';
   }
 }
 
@@ -655,10 +669,10 @@ btnNounSort.addEventListener('click', ()=>{
 /* ---------- Boot ---------- */
 (async function boot(){
   try {
-    await loadLanguageData();     // load manifest + nouns from /en/
+    await loadLanguageData();     // load manifest + nouns from ROOT
   } catch (e) {
     console.warn('[EN] loadLanguageData failed; using fallback nouns.', e);
   }
   buildAll();                     // build reels from freshly loaded BASE lists
-  loadProvidedIndex();            // enable provided lists under /en/nouns/
+  loadProvidedIndex();            // enable provided lists under ROOT /nouns/
 })();

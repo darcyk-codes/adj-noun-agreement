@@ -1,27 +1,40 @@
-// Resolve repo root even when this page is served from /sl/ or /en/
-const ROOT = location.pathname.replace(/\/(sl|en)(?:\/.*)?$/, '');
+// --- This runs inside /sl/index.html ---
 
-// --- language and URL helpers ---
-const APP_VERSION = '2025-10-23-5'; // bump when you deploy
+// Infer which iframe folder we’re in ('sl' or 'en'); default to SL>EN for /sl/
+const CUR_DIR = location.pathname.split('/').slice(-2, -1)[0]; // 'sl' or 'en'
 const MODES = { EN_TO_SL: 'EN>SL', SL_TO_EN: 'SL>EN' };
+let mode = (CUR_DIR === 'sl') ? MODES.SL_TO_EN : MODES.EN_TO_SL;
 
-// For the /SL/ build, default to SL>EN (prompts in Slovene, reels are Slovene)
-// NOTE: This file is adapted for /SN/ build but keeps both modes working.
-let mode = MODES.SL_TO_EN;
-let dataLoadedFor = null; // remembers which dir we last loaded
+// ===== Version + ROOT helpers (shared with /en) =====
+// Read version from iframe URL (?v=...) set by switcher.js, or fallback to parent/global
+const APP_VERSION =
+  new URLSearchParams(location.search).get('v') ||
+  (window.parent && window.parent.__APP_VERSION) ||
+  '0';
 
-function langDir(m) {
-  return m === MODES.SL_TO_EN ? 'sl' : 'en';
+// Compute repo ROOT (e.g., "/adj-noun-agreement"), stripping "/en/..." or "/sl/..."
+const ROOT = location.pathname.replace(/\/(en|sl)(?:\/.*)?$/, '');
+
+// Root-relative URL (for files that live at the app root: manifest.json, nouns/*)
+function rootUrl(relPath) {
+  const clean = String(relPath).replace(/^\/+/, '');
+  const sep = clean.includes('?') ? '&' : '?';
+  return `${ROOT}/${clean}${sep}v=${encodeURIComponent(APP_VERSION)}`;
 }
 
-// Build a language-scoped, cache-busted relative URL.
-// Relative (no leading slash) so it works on GitHub Pages under /<repo>/
-function langUrl(relPath, m = mode) {
-  const dir = langDir(m);
-  const q = `v=${encodeURIComponent(APP_VERSION)}`;
-  const sep = relPath.includes('?') ? '&' : '?';
-  return `${dir}/${relPath}${sep}${q}`;
+// Folder-local URL (if you ever need something inside /sl or /en)
+function localUrl(relPath) {
+  const clean = String(relPath).replace(/^\/+/, '');
+  const sep = clean.includes('?') ? '&' : '?';
+  return `${clean}${sep}v=${encodeURIComponent(APP_VERSION)}`;
 }
+
+// --- language helpers (kept for mode awareness only) ---
+function reelsShowEnglish(m = mode) { return m === MODES.SL_TO_EN; } // SL>EN prompt => reels show EN
+function ownerLabelEN(owner) { return owner === 'your-pl' ? 'YOUR (PL.)' : String(owner).toUpperCase(); }
+function displayAdj(adj, m = mode) { return adj ? (reelsShowEnglish(m) ? ownerLabelEN(adj.owner) : adj.form) : '—'; }
+function displayNoun(group, m = mode) { return group ? (reelsShowEnglish(m) ? (group.english || '—') : group.noun) : '—'; }
+function collatorForMode() { return new Intl.Collator(reelsShowEnglish() ? 'en' : 'sl', { sensitivity:'base' }); }
 
 /* ---------- Base adjective forms (flat) ---------- */
 const ADJECTIVES_RAW = [
@@ -76,66 +89,55 @@ const ADJECTIVES_RAW = [
 ];
 
 /* ---------- Utilities ---------- */
-function shuffle(arr){ const a = arr.slice(); for (let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
+function shuffle(a){ const c=a.slice(); for(let i=c.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [c[i],c[j]]=[c[j],c[i]];} return c; }
 function mod(n,m){ return ((n % m) + m) % m; }
 
 /* ---------- Grouping ---------- */
 function groupAdjectives(rows){
-  const map = new Map();
+  const map=new Map();
   for(const r of rows){
     const key = `${r.form}||${r.owner}`;
     if(!map.has(key)) map.set(key, { form:r.form, owner:r.owner, variants:[] });
     map.get(key).variants.push({ gender:r.gender, number:r.number });
   }
-  const gOrder = {m:0,f:1,n:2};
-  const nOrder = {sg:0,pl:1,du:2};
+  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
   return Array.from(map.values()).map(x=>{
-    const seen = new Set();
+    const seen=new Set();
     x.variants = x.variants
       .filter(v=>{ const k=`${v.gender}|${v.number}`; if(seen.has(k)) return false; seen.add(k); return true; })
       .sort((a,b)=> (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
     return x;
   });
 }
-
 function groupNouns(rows){
-  const map = new Map();
-  const conflicts = [];
-  const gOrder = {m:0,f:1,n:2};
-  const nOrder = {sg:0,pl:1,du:2};
-
+  const map=new Map(), conflicts=[];
+  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
   for(const r of rows){
     if(!r || !r.noun) continue;
-    const key = r.noun.normalize('NFC');
+    const key=r.noun.normalize('NFC');
     if(!map.has(key)){
       map.set(key, { noun:key, english:r.english, variants:[{gender:r.gender, number:r.number}] });
     } else {
-      const entry = map.get(key);
-      if (entry.english !== r.english){
-        conflicts.push({ noun:key, first:entry.english, other:r.english });
-      }
-      entry.variants.push({ gender:r.gender, number:r.number });
+      const e=map.get(key);
+      if(e.english !== r.english) conflicts.push({noun:key, first:e.english, other:r.english});
+      e.variants.push({gender:r.gender, number:r.number});
     }
   }
-  const groups = Array.from(map.values()).map(x=>{
-    const seen = new Set();
+  const groups=Array.from(map.values()).map(x=>{
+    const seen=new Set();
     x.variants = x.variants
       .filter(v=>{ const k=`${v.gender}|${v.number}`; if(seen.has(k)) return false; seen.add(k); return true; })
       .sort((a,b)=> (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
     return x;
   });
-
-  if (conflicts.length){
-    const msg = conflicts
-      .slice(0,6)
-      .map(c=>`• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`)
-      .join('\n');
+  if(conflicts.length){
+    const msg = conflicts.slice(0,6).map(c=>`• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('\n');
     alert('Some nouns had conflicting English glosses. Using the first value found.\n' + msg + (conflicts.length>6?'\n…':''));
   }
   return groups;
 }
 
-/* ---------- Starter nouns (used only if /sl/ manifest is absent) ---------- */
+/* ---------- Starter nouns (fallback only) ---------- */
 const NOUNS_START = [
   { noun:"hiša",  gender:"f", number:"sg", english:"house" },
   { noun:"mesto", gender:"n", number:"sg", english:"city" },
@@ -146,22 +148,15 @@ const NOUNS_START = [
 
 /* ---------- State ---------- */
 let showHints = true;
-
-// Sorting modes: 'random' or 'alpha'
 let adjSortMode = 'random';
 let nounSortMode = 'random';
 
-// Base lists (language data) and working copies
-let ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW); // adjectives are static in SL mode
-let NOUN_GROUPS_BASE = groupNouns(NOUNS_START);        // nouns will be replaced by loader
+let ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW);
+let NOUN_GROUPS_BASE = groupNouns(NOUNS_START);
 
-let ADJ_GROUPS = []; // ordered working copies
+let ADJ_GROUPS = [];
 let NOUN_GROUPS = [];
-
-let adjLen = 0;
-let nounLen = 0;
-let adjPos = 0;
-let nounPos = 0;
+let adjLen=0, nounLen=0, adjPos=0, nounPos=0;
 
 /* ---------- DOM ---------- */
 const adjReel = document.getElementById('adjReel');
@@ -203,37 +198,12 @@ function clearPromptUI(){
   resultLine.textContent = '—';
   explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
 }
-
-// Find the correct adjective surface form for an owner + (g,n)
 function adjFormFor(owner, g, n){
   const hit = ADJECTIVES_RAW.find(a => a.owner === owner && a.gender === g && a.number === n);
   return hit?.form || null;
 }
 
-/* === NEW: reel display helpers (mode-aware) =============================== */
-// Reels show the answer language (opposite of prompt language):
-// Prompt EN => reels SL; Prompt SL => reels EN
-function reelsShowEnglish(m = mode) {
-  return m === MODES.SL_TO_EN; // SL>EN prompt => reels in English
-}
-function ownerLabelEN(owner) {
-  return owner === 'your-pl' ? 'YOUR (PL.)' : String(owner).toUpperCase();
-}
-function displayAdj(adj, m = mode) {
-  if (!adj) return '—';
-  return reelsShowEnglish(m) ? ownerLabelEN(adj.owner) : adj.form;
-}
-function displayNoun(nounGroup, m = mode) {
-  if (!nounGroup) return '—';
-  return reelsShowEnglish(m) ? (nounGroup.english || '—') : nounGroup.noun;
-}
-function collatorForMode() {
-  // Use English collation when reels show English, Slovene otherwise
-  return new Intl.Collator(reelsShowEnglish() ? 'en' : 'sl', { sensitivity: 'base' });
-}
-/* ======================================================================== */
-
-/* ---------- Reels rendering ---------- */
+/* ---------- Reels rendering / navigation ---------- */
 function centerOffsetFor(trackEl){
   const ITEM_H = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--itemH')) || 44;
   const reelEl = trackEl.parentElement; const reelH = reelEl.clientHeight || 240;
@@ -241,8 +211,8 @@ function centerOffsetFor(trackEl){
 }
 function buildReel(trackEl, items, renderFn){
   const repeated=[];
-  for (let r=0;r<5;r++){
-    for (let i=0;i<items.length;i++){
+  for(let r=0;r<5;r++){
+    for(let i=0;i<items.length;i++){
       repeated.push(`<div class="reelItem">${renderFn(items[i])}</div>`);
     }
   }
@@ -250,28 +220,34 @@ function buildReel(trackEl, items, renderFn){
 }
 function renderByPos(trackEl, len, pos){
   const { ITEM_H, centerOffset } = centerOffsetFor(trackEl);
-  const y = -(pos*ITEM_H - centerOffset); trackEl.style.transform=`translateY(${y}px)`;
-  const items = trackEl.querySelectorAll('.reelItem'); items.forEach(el=>el.classList.remove('selected'));
+  const y = -(pos*ITEM_H - centerOffset);
+  trackEl.style.transform=`translateY(${y}px)`;
+  const items = trackEl.querySelectorAll('.reelItem');
+  items.forEach(el=>el.classList.remove('selected'));
   const selectedEl = items[pos]; if (selectedEl) selectedEl.classList.add('selected');
   if (pos < 1*len || pos > 4*len){
     const newPos = 2*len + mod(pos, len);
-    const prev = trackEl.style.transition; trackEl.style.transition='none';
-    const y2 = -(newPos*ITEM_H - centerOffset); trackEl.style.transform=`translateY(${y2}px)`; trackEl.offsetHeight; trackEl.style.transition = prev; return newPos;
+    const prev = trackEl.style.transition;
+    trackEl.style.transition='none';
+    const y2 = -(newPos*ITEM_H - centerOffset);
+    trackEl.style.transform=`translateY(${y2}px)`;
+    trackEl.offsetHeight; // reflow
+    trackEl.style.transition = prev;
+    return newPos;
   }
   return pos;
 }
 function stepAdj(delta){ adjPos = renderByPos(adjTrack, adjLen, adjPos + (delta>0?1:-1)); updateBadges(); }
 function stepNoun(delta){ nounPos = renderByPos(nounTrack, nounLen, nounPos + (delta>0?1:-1)); updateBadges(); }
 
-/* Wheel, touch, keyboard handlers */
 function wheelHandlerFactory(kind){
-  let acc = 0, ticking = false;
+  let acc=0, ticking=false;
   return function(e){
     e.preventDefault(); acc += e.deltaY;
-    if (ticking) return; ticking = true;
+    if (ticking) return; ticking=true;
     setTimeout(()=>{ if (acc > 6) (kind==='adj'?stepAdj(+1):stepNoun(+1));
                      else if (acc < -6) (kind==='adj'?stepAdj(-1):stepNoun(-1));
-                     acc = 0; ticking = false; }, 50);
+                     acc=0; ticking=false; }, 50);
   }
 }
 function touchHandlerFactory(kind){
@@ -297,14 +273,14 @@ function keyHandlerFactory(kind){
   }
 }
 
-/* ---------- Chips rendering ---------- */
+/* ---------- Variant chips & badges ---------- */
 function chip(cls){ const d=document.createElement('div'); d.className=`keychip ${cls}`; d.textContent=cls.toUpperCase(); return d; }
 function renderAdjVariants(container, variants){
   container.innerHTML='';
   if(!showHints){ container.classList.add('hidden'); return; }
   container.classList.remove('hidden');
   for(const v of variants){
-    const line = document.createElement('div'); line.className='keyline';
+    const line=document.createElement('div'); line.className='keyline';
     line.appendChild(chip(v.gender)); line.appendChild(chip(v.number));
     container.appendChild(line);
   }
@@ -314,59 +290,45 @@ function renderNounVariants(container, variants){
   if(!showHints){ container.classList.add('hidden'); return; }
   container.classList.remove('hidden');
   for(const v of variants){
-    const line = document.createElement('div'); line.className='keyline';
+    const line=document.createElement('div'); line.className='keyline';
     line.appendChild(chip(v.gender)); line.appendChild(chip(v.number));
     container.appendChild(line);
   }
 }
-
-/* ---------- Current selections ---------- */
 function currentAdj(){ return ADJ_GROUPS[mod(adjPos, adjLen)]; }
 function currentNoun(){ return NOUN_GROUPS[mod(nounPos, nounLen)]; }
-
-/* === UPDATED: badges use mode-aware display ============================== */
 function updateBadges(){
   const a=currentAdj(), n=currentNoun();
-  adjBadge.textContent = `Selected: ${a ? displayAdj(a) : '—'}`;
+  adjBadge.textContent  = `Selected: ${a ? displayAdj(a) : '—'}`;
   nounBadge.textContent = `Selected: ${n ? displayNoun(n) : '—'}`;
   if (a) renderAdjVariants(adjKeys, a.variants); else adjKeys.innerHTML='';
   if (n) renderNounVariants(nounKeys, n.variants); else nounKeys.innerHTML='';
-  btnShowHints.textContent = `Show Hints: ${showHints?'ON':'OFF'}`;
+  btnShowHints.textContent = `Show Hints: ${showHints ? 'ON' : 'OFF'}`;
 }
-/* ======================================================================== */
 
 /* ---------- Prompt & feedback (SL prompts) ---------- */
 function ownerLabel(owner){ return owner === 'your-pl' ? 'vi' : String(owner).toUpperCase(); }
-function featAbbrev(g, n){ return `${g}/${n}`.toLowerCase(); }
-
 function newPrompt(){
   if(!NOUN_GROUPS.length){ promptText.textContent='Naložite seznam samostalnikov (CSV), da začnete'; return; }
 
-  // 1) choose target noun group
-  const nounIdx=Math.floor(Math.random()*NOUN_GROUPS.length);
-  const chosen=NOUN_GROUPS[nounIdx];
+  const nounIdx = Math.floor(Math.random()*NOUN_GROUPS.length);
+  const chosen = NOUN_GROUPS[nounIdx];
 
-  // 2) choose owner
-  const owners=[...new Set(ADJECTIVES_RAW.map(a=>a.owner))];
-  const owner=owners[Math.floor(Math.random()*owners.length)];
+  const owners = [...new Set(ADJECTIVES_RAW.map(a=>a.owner))];
+  const owner = owners[Math.floor(Math.random()*owners.length)];
 
-  // 3) choose a target gender/number for the prompt (one of noun variants)
   const targetVar = chosen.variants[Math.floor(Math.random()*chosen.variants.length)];
   const g = targetVar.gender, n = targetVar.number;
 
-  // 4) pick the correct Slovene possessive surface form that agrees with the noun
   const possForm = adjFormFor(owner, g, n) || ownerLabel(owner);
 
-  // Store stable noun id (Slovene form) + target features so Check() is deterministic
   window.promptState = { owner, targetNounId: chosen.noun, nounEnglish: chosen.english, g, n };
 
-  // SL prompt text (e.g., "tvoji mački")
+  // SL prompt (e.g., "tvoji mački")
   promptText.textContent = `${possForm} ${chosen.noun}`;
-
-  resultLine.textContent='—';
-  explain.textContent='Zavrtite oba koluta, da ujemata poziv, nato pritisnite »Check«.';
+  resultLine.textContent = '—';
+  explain.textContent = 'Zavrtite oba koluta, da ujemata poziv, nato pritisnite »Check«.';
 }
-
 function check(){
   const st = window.promptState;
   if (!st) { explain.textContent = 'Najprej ustvarite poziv.'; return; }
@@ -388,8 +350,8 @@ function check(){
     return;
   }
 
-  // Checks
   const ownerOK = !!a && (a.owner === st.owner);
+
   const nounGroup = NOUN_GROUPS.find(x => x.noun === (n?.noun || target.noun));
   const acceptable = (nounGroup && Array.isArray(nounGroup.variants) && nounGroup.variants.length)
     ? nounGroup.variants
@@ -402,7 +364,6 @@ function check(){
 
   const allOK = ownerOK && agreeOK && nounOK;
 
-  // Feedback
   resultLine.textContent = allOK ? '✅ Pravilno' : '❌ Ni čisto pravilno';
 
   const pairsText = acceptable.map(v => `${v.gender}/${v.number}`).join(', ') || '—';
@@ -410,14 +371,12 @@ function check(){
   const possFormForExpl = adjFormFor(st.owner, st.g, st.n) || ownerLabel(st.owner);
 
   const parts = [];
-  // Show SL prompt in explanation too
   parts.push(`Prompt: “${possFormForExpl} ${target.noun}”`);
   parts.push(
     `Izbrali ste pridevnik: “${chosenAdjForm}” (${(a?.owner || '—').toUpperCase()}); ` +
     `samostalnik: “${n?.noun ?? '—'}” (${n?.english?.toUpperCase() || target.english.toUpperCase() || '—'}). ` +
     `(Sprejemljivo ujemanje: ${pairsText})`
   );
-
   if (!ownerOK) parts.push('• Posestni zaimek se ne ujema s pozivom.');
   if (!agreeOK) parts.push('• Pridevnik se mora ujemati s spolom/številom samostalnika.');
   if (!nounOK)  parts.push(`• Samostalnik mora biti “${target.noun}” (EN: ${target.english}).`);
@@ -425,14 +384,14 @@ function check(){
   explain.textContent = parts.join(' ');
 }
 
-/* ---------- Sorting logic (mode-aware for A–Z) ---------- */
+/* ---------- Sorting (mode-aware A–Z) ---------- */
 function sortAdj(modeSel){
   adjSortMode = modeSel;
   btnAdjSort.textContent = `Adj order: ${modeSel==='alpha'?'A–Z':'Random'}`;
 
-  const current = currentAdj(); // remember current selection to preserve it
-  let next = [];
-  if (modeSel === 'alpha') {
+  const current = currentAdj();
+  let next=[];
+  if (modeSel === 'alpha'){
     const coll = collatorForMode();
     next = [...ADJ_GROUPS_BASE].sort((a,b)=> coll.compare(displayAdj(a), displayAdj(b)));
   } else {
@@ -441,20 +400,18 @@ function sortAdj(modeSel){
   ADJ_GROUPS = next;
   adjLen = ADJ_GROUPS.length;
 
-  // rebuild track (mode-aware labels)
   const targetIndex = current ? ADJ_GROUPS.findIndex(x => x.form===current.form && x.owner===current.owner) : 0;
-  buildReel(adjTrack, ADJ_GROUPS, a=>displayAdj(a));
+  buildReel(adjTrack, ADJ_GROUPS, a => displayAdj(a));
   adjPos = 2*adjLen + (targetIndex>=0?targetIndex:0);
   requestAnimationFrame(()=>{ adjPos = renderByPos(adjTrack, adjLen, adjPos); updateBadges(); });
 }
-
 function sortNoun(modeSel){
   nounSortMode = modeSel;
   btnNounSort.textContent = `Noun order: ${modeSel==='alpha'?'A–Z':'Random'}`;
 
   const current = currentNoun();
-  let next = [];
-  if (modeSel === 'alpha') {
+  let next=[];
+  if (modeSel === 'alpha'){
     const coll = collatorForMode();
     next = [...NOUN_GROUPS_BASE].sort((a,b)=> coll.compare(displayNoun(a), displayNoun(b)));
   } else {
@@ -464,72 +421,68 @@ function sortNoun(modeSel){
   nounLen = NOUN_GROUPS.length;
 
   const targetIndex = current ? NOUN_GROUPS.findIndex(x => x.noun===current.noun) : 0;
-  buildReel(nounTrack, NOUN_GROUPS, n=>displayNoun(n));
+  buildReel(nounTrack, NOUN_GROUPS, n => displayNoun(n));
   nounPos = 2*nounLen + (targetIndex>=0?targetIndex:0);
   requestAnimationFrame(()=>{ nounPos = renderByPos(nounTrack, nounLen, nounPos); updateBadges(); });
 }
 
-/* ---------- Build ---------- */
+/* ---------- Build & rerender ---------- */
 function buildAll(){
-  // initialize ordered copies from BASE using current sort modes
   sortAdj(adjSortMode);
   sortNoun(nounSortMode);
 }
-
-/* === NEW: rerender after mode changes (keeps selection) ================== */
 function rerenderReelsForMode(){
   buildReel(adjTrack, ADJ_GROUPS, a => displayAdj(a));
   buildReel(nounTrack, NOUN_GROUPS, n => displayNoun(n));
-  adjPos  = renderByPos(adjTrack,  adjLen,  adjPos);
+  adjPos  = renderByPos(adjTrack, adjLen, adjPos);
   nounPos = renderByPos(nounTrack, nounLen, nounPos);
   updateBadges();
 }
-/* ======================================================================== */
 
-/* ---------- Language data loader (await before rendering) ---------- */
-async function loadLanguageData(m = mode) {
-  const dir = langDir(m);
-
-  // 1) Load manifest from the root directory ()
+/* ---------- Data loading (from ROOT manifest + nouns) ---------- */
+async function loadLanguageData() {
+  // 1) Load manifest from the ROOT (e.g., /manifest.json)
   let nounsUrl = null;
   try {
-    const manifestResp = await fetch(langUrl('../manifest.json', m), { cache: 'no-store' });
-    if (!manifestResp.ok) throw new Error(`Failed manifest for ${dir}: ${manifestResp.status}`);
+    const manifestResp = await fetch(rootUrl('manifest.json'), { cache: 'no-store' });
+    if (!manifestResp.ok) throw new Error(`Failed manifest: ${manifestResp.status}`);
     const manifest = await manifestResp.json();
 
-    // Expect manifest like: { "nouns": "nouns.json" }  (adjectives are static here)
-    nounsUrl = manifest.nouns ? langUrl(manifest.nouns, m) : null;
+    // Expect: { "nouns": "nouns/nouns.json" } — adjectives are static
+    if (manifest && manifest.nouns) {
+      nounsUrl = /^https?:\/\//i.test(manifest.nouns)
+        ? manifest.nouns
+        : rootUrl(manifest.nouns);   // <<< root-relative
+    }
   } catch (e) {
-    console.warn('manifest.json not found or invalid, using NOUNS_START fallback.', e);
+    console.warn('manifest.json not found/invalid, using built-in fallback.', e);
   }
 
-  // 2) Fetch nouns if provided; else use fallback
+  // 2) Fetch nouns (if present) else use fallback
   let nounRows = NOUNS_START;
   if (nounsUrl) {
     const nounResp = await fetch(nounsUrl, { cache: 'no-store' });
-    if (!nounResp.ok) throw new Error(`Failed nouns for ${dir}: ${nounResp.status}`);
+    if (!nounResp.ok) throw new Error(`Failed nouns: ${nounResp.status}`);
     nounRows = await nounResp.json();
   }
 
-  // 3) Replace BASE state entirely (avoid mixing languages)
-  ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW); // unchanged but normalized
+  // 3) Replace BASE state entirely
+  ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW);
   NOUN_GROUPS_BASE = groupNouns(nounRows);
 
-  // 4) Reset working sets; they'll be rebuilt in buildAll()
+  // 4) Reset working sets; rebuild in buildAll()
   ADJ_GROUPS = [];
   NOUN_GROUPS = [];
   adjLen = nounLen = adjPos = nounPos = 0;
 
-  // 5) Reset prompt & selections
+  // 5) Reset prompt/feedback
   clearPromptUI();
-
-  dataLoadedFor = dir;
 }
 
-/* ---------- Provided lists loader (scoped to /sl/nouns/manifest.json) ---------- */
+/* ---------- Provided lists (shared at ROOT /nouns/) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch(`${ROOT}/nouns/manifest.json?v=${APP_VERSION}`, {cache:'no-cache'});
+    const res = await fetch(rootUrl('nouns/manifest.json'), {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');
@@ -538,7 +491,7 @@ async function loadProvidedIndex(){
     for (const it of items){
       const rel = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
       const label = it.label || (it.file ? it.file : rel.split('/').pop());
-      const url = `${ROOT}/${rel}?v=${APP_VERSION}`;
+      const url = rootUrl(rel); // NOTE: root, not local
       const o = document.createElement('option');
       o.value = url;
       o.textContent = label;
@@ -551,10 +504,9 @@ async function loadProvidedIndex(){
     providedSelect.innerHTML = '<option>No provided lists found</option>';
     providedSelect.disabled = true;
     loadProvidedBtn.disabled = true;
-    providedHint.textContent = 'Tip: add nouns/manifest.json to list your CSVs.';
+    providedHint.textContent = 'Tip: add nouns/manifest.json at the app root.';
   }
 }
-
 async function loadProvidedCSV(path){
   try{
     fileNameEl.textContent = path.split('/').pop();
@@ -653,7 +605,6 @@ async function readFileAsTextSmart(file, encodings=['utf-8']){
   }
   return best;
 }
-
 function parseCSV(text){
   const out=[]; let row=[], val='', inQ=false;
   for(let i=0;i<text.length;i++){
@@ -695,7 +646,6 @@ loadProvidedBtn.addEventListener('click', ()=>{
   const val = providedSelect.value;
   if (val && !providedSelect.disabled) loadProvidedCSV(val);
 });
-
 btnAdjSort.addEventListener('click', ()=>{
   sortAdj(adjSortMode==='random' ? 'alpha' : 'random');
 });
@@ -703,71 +653,13 @@ btnNounSort.addEventListener('click', ()=>{
   sortNoun(nounSortMode==='random' ? 'alpha' : 'random');
 });
 
-/* ---------- Boot: load language data, then build UI ---------- */
+/* ---------- Boot ---------- */
 (async function boot(){
   try {
-    await loadLanguageData(mode);  // <— critical: await data before rendering
+    await loadLanguageData();     // load manifest + nouns from ROOT
   } catch (e) {
-    console.warn('[SL] loadLanguageData failed, using fallback nouns.', e);
-    // fall through with NOUNS_START
+    console.warn('[SL] loadLanguageData failed; using fallback nouns.', e);
   }
-  buildAll();          // build reels from the freshly loaded BASE lists
-  loadProvidedIndex(); // optional: enable provided lists located under /sl/nouns/
-})();
-
-/* ---------- PWA: service worker registration with update flow ---------- */
-(function registerSWWithUpdates(){
-  if (!('serviceWorker' in navigator)) return;
-
-  let refreshing = false;
-
-  function showUpdateToast(onClick){
-    if (document.querySelector('.update-toast')) return;
-    const bar = document.createElement('div');
-    bar.className = 'update-toast';
-    bar.innerHTML = `
-      <span>🔄 An update is available.</span>
-      <button class="btn" id="laterBtn">Later</button>
-      <button class="btn primary" id="applyBtn">Update now</button>
-    `;
-    document.body.appendChild(bar);
-    bar.querySelector('#laterBtn').addEventListener('click', ()=> bar.remove());
-    bar.querySelector('#applyBtn').addEventListener('click', ()=> onClick?.());
-  }
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
-
-  window.addEventListener('load', async () => {
-    try{
-      const reg = await navigator.serviceWorker.register(`${ROOT}/service-worker.js`);
-      console.log('[SW] registered', reg.scope);
-
-      reg.addEventListener('updatefound', () => {
-        const sw = reg.installing;
-        if (!sw) return;
-        sw.addEventListener('statechange', () => {
-          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateToast(() => {
-              if (reg.waiting) {
-                reg.waiting.postMessage('SKIP_WAITING');
-              } else if (reg.installing && reg.installing.state === 'installed') {
-                reg.installing.postMessage('SKIP_WAITING');
-              }
-            });
-          }
-        });
-      });
-
-      setInterval(() => reg.update().catch(()=>{}), 30 * 60 * 1000);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') reg.update().catch(()=>{});
-      });
-    }catch(err){
-      console.warn('[SW] registration failed', err);
-    }
-  });
+  buildAll();          // build reels from freshly loaded BASE lists
+  loadProvidedIndex(); // enable provided lists under ROOT /nouns/
 })();
