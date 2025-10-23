@@ -15,7 +15,6 @@
       --accent: #4f8cff;
       --border: #252838;
       --btn-radius: 12px;
-      --frame-min-h: 68vh;
     }
     html, body {
       margin: 0; padding: 0; height: 100%;
@@ -41,11 +40,18 @@
     .modebar button.active {
       background: var(--accent); border-color: var(--accent); color: white;
     }
-    .frames { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .frames {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
     iframe {
-      width: 100%; min-height: var(--frame-min-h);
-      border: 1px solid var(--border); border-radius: 14px;
-      background: #0a0c12;
+      width: 100%;
+      height: 100%;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      display: block;
     }
     .hidden { display: none !important; }
   </style>
