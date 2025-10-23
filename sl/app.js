@@ -1,6 +1,27 @@
 // Resolve repo root even when this page is served from /sl/ or /en/
 const ROOT = location.pathname.replace(/\/(sl|en)(?:\/.*)?$/, '');
 
+// --- language and URL helpers ---
+const APP_VERSION = '2025-10-23-2'; // bump when you deploy
+const MODES = { EN_TO_SL: 'EN>SL', SL_TO_EN: 'SL>EN' };
+
+// For the /SL/ build, default to SL>EN (prompts in Slovene, reels are Slovene)
+let mode = MODES.SL_TO_EN;
+let dataLoadedFor = null; // remembers which dir we last loaded
+
+function langDir(m) {
+  return m === MODES.SL_TO_EN ? 'sl' : 'en';
+}
+
+// Build a language-scoped, cache-busted relative URL.
+// Relative (no leading slash) so it works on GitHub Pages under /<repo>/
+function langUrl(relPath, m = mode) {
+  const dir = langDir(m);
+  const q = `v=${encodeURIComponent(APP_VERSION)}`;
+  const sep = relPath.includes('?') ? '&' : '?';
+  return `${dir}/${relPath}${sep}${q}`;
+}
+
 /* ---------- Base adjective forms (flat) ---------- */
 const ADJECTIVES_RAW = [
   { form:"moj",   gender:"m", number:"sg", owner:"my" },
@@ -113,7 +134,7 @@ function groupNouns(rows){
   return groups;
 }
 
-/* ---------- Starter nouns (flat) ---------- */
+/* ---------- Starter nouns (used only if /sl/ manifest is absent) ---------- */
 const NOUNS_START = [
   { noun:"hiša",  gender:"f", number:"sg", english:"house" },
   { noun:"mesto", gender:"n", number:"sg", english:"city" },
@@ -129,9 +150,9 @@ let showHints = true;
 let adjSortMode = 'random';
 let nounSortMode = 'random';
 
-// Keep a stable base list for each; rebuild ordered copies from these
-let ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW);
-let NOUN_GROUPS_BASE = groupNouns(NOUNS_START);
+// Base lists (language data) and working copies
+let ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW); // adjectives are static in SL mode
+let NOUN_GROUPS_BASE = groupNouns(NOUNS_START);        // nouns will be replaced by loader
 
 let ADJ_GROUPS = []; // ordered working copies
 let NOUN_GROUPS = [];
@@ -180,6 +201,12 @@ function clearPromptUI(){
   promptText.textContent = 'Tap “New Prompt”';
   resultLine.textContent = '—';
   explain.textContent = 'Spin both reels to match the prompt, then press “Check”.';
+}
+
+// Find the correct adjective surface form for an owner + (g,n)
+function adjFormFor(owner, g, n){
+  const hit = ADJECTIVES_RAW.find(a => a.owner === owner && a.gender === g && a.number === n);
+  return hit?.form || null;
 }
 
 /* ---------- Reels rendering ---------- */
@@ -282,27 +309,41 @@ function updateBadges(){
   btnShowHints.textContent = `Show Hints: ${showHints?'ON':'OFF'}`;
 }
 
-/* ---------- Prompt & feedback ---------- */
-function ownerLabel(owner){ return owner === 'your-pl' ? 'YOU ALL' : String(owner).toUpperCase(); }
+/* ---------- Prompt & feedback (SL prompts) ---------- */
+function ownerLabel(owner){ return owner === 'your-pl' ? 'vi' : String(owner).toUpperCase(); }
 function featAbbrev(g, n){ return `${g}/${n}`.toLowerCase(); }
 
 function newPrompt(){
-  if(!NOUN_GROUPS.length){ promptText.textContent='Upload your noun list (CSV) to start'; return; }
+  if(!NOUN_GROUPS.length){ promptText.textContent='Naložite seznam samostalnikov (CSV), da začnete'; return; }
+
+  // 1) choose target noun group
   const nounIdx=Math.floor(Math.random()*NOUN_GROUPS.length);
   const chosen=NOUN_GROUPS[nounIdx];
+
+  // 2) choose owner
   const owners=[...new Set(ADJECTIVES_RAW.map(a=>a.owner))];
   const owner=owners[Math.floor(Math.random()*owners.length)];
 
-  // store stable noun id (Slovene form) so sorting won't break Check
-  window.promptState = { owner, targetNounId: chosen.noun, nounEnglish: chosen.english };
-  promptText.textContent=`${owner.replace('-pl',' (you all)')} ${chosen.english}`;
+  // 3) choose a target gender/number for the prompt (one of noun variants)
+  const targetVar = chosen.variants[Math.floor(Math.random()*chosen.variants.length)];
+  const g = targetVar.gender, n = targetVar.number;
+
+  // 4) pick the correct Slovene possessive surface form that agrees with the noun
+  const possForm = adjFormFor(owner, g, n) || ownerLabel(owner);
+
+  // Store stable noun id (Slovene form) + target features so Check() is deterministic
+  window.promptState = { owner, targetNounId: chosen.noun, nounEnglish: chosen.english, g, n };
+
+  // SL prompt text (e.g., "tvoji mački")
+  promptText.textContent = `${possForm} ${chosen.noun}`;
+
   resultLine.textContent='—';
-  explain.textContent='Spin both reels to match the prompt, then press “Check”.';
+  explain.textContent='Zavrtite oba koluta, da ujemata poziv, nato pritisnite »Check«.';
 }
 
 function check(){
   const st = window.promptState;
-  if (!st) { explain.textContent = 'Create a prompt first.'; return; }
+  if (!st) { explain.textContent = 'Najprej ustvarite poziv.'; return; }
 
   const a = currentAdj();
   const n = currentNoun();
@@ -316,8 +357,8 @@ function check(){
   }
   if (!target && typeof st.targetNounIndex === 'number') target = NOUN_GROUPS[st.targetNounIndex] || null;
   if (!target) {
-    resultLine.textContent = '❌ Not quite';
-    explain.textContent = 'Could not resolve the target noun. Click “New Prompt” and try again.';
+    resultLine.textContent = '❌ Ni čisto pravilno';
+    explain.textContent = 'Ciljnega samostalnika ni bilo mogoče razrešiti. Kliknite »New Prompt« in poskusite znova.';
     return;
   }
 
@@ -326,7 +367,7 @@ function check(){
   const nounGroup = NOUN_GROUPS.find(x => x.noun === (n?.noun || target.noun));
   const acceptable = (nounGroup && Array.isArray(nounGroup.variants) && nounGroup.variants.length)
     ? nounGroup.variants
-    : [{ gender: target.gender, number: target.number }];
+    : [{ gender: st.g, number: st.n }];
 
   const agreeOK = !!a && Array.isArray(a.variants) && a.variants.some(av =>
     acceptable.some(nv => av.gender === nv.gender && av.number === nv.number)
@@ -336,34 +377,36 @@ function check(){
   const allOK = ownerOK && agreeOK && nounOK;
 
   // Feedback
-  resultLine.textContent = allOK ? '✅ Correct' : '❌ Not quite';
+  resultLine.textContent = allOK ? '✅ Pravilno' : '❌ Ni čisto pravilno';
 
   const pairsText = acceptable.map(v => `${v.gender}/${v.number}`).join(', ') || '—';
-  const chosenAdjForm = a?.form ?? (a?.variants?.[0]?.form ?? '—');
-  const parts = [];
+  const chosenAdjForm = a?.form ?? '—';
+  const possFormForExpl = adjFormFor(st.owner, st.g, st.n) || ownerLabel(st.owner);
 
-  parts.push(`Prompt: ${st.owner} + “${target.noun}”`);
+  const parts = [];
+  // Show SL prompt in explanation too
+  parts.push(`Prompt: “${possFormForExpl} ${target.noun}”`);
   parts.push(
-    `You chose adj: “${chosenAdjForm}” (${(a?.owner || '—').toUpperCase()}); ` +
-    `noun: “${n?.noun ?? '—'}” (${n?.english?.toUpperCase() || target.english.toUpperCase() || '—'}). ` +
-    `(Acceptable agreement: ${pairsText})`
+    `Izbrali ste pridevnik: “${chosenAdjForm}” (${(a?.owner || '—').toUpperCase()}); ` +
+    `samostalnik: “${n?.noun ?? '—'}” (${n?.english?.toUpperCase() || target.english.toUpperCase() || '—'}). ` +
+    `(Sprejemljivo ujemanje: ${pairsText})`
   );
 
-  if (!ownerOK) parts.push('• The possessive owner does not match the prompt.');
-  if (!agreeOK) parts.push('• The adjective must agree with the noun’s gender/number.');
-  if (!nounOK)  parts.push(`• The noun should be “${target.noun}” (EN: ${target.english}).`);
+  if (!ownerOK) parts.push('• Posestni zaimek se ne ujema s pozivom.');
+  if (!agreeOK) parts.push('• Pridevnik se mora ujemati s spolom/številom samostalnika.');
+  if (!nounOK)  parts.push(`• Samostalnik mora biti “${target.noun}” (EN: ${target.english}).`);
 
   explain.textContent = parts.join(' ');
 }
 
 /* ---------- Sorting logic ---------- */
-function sortAdj(mode){
-  adjSortMode = mode;
-  btnAdjSort.textContent = `Adj order: ${mode==='alpha'?'A–Z':'Random'}`;
+function sortAdj(modeSel){
+  adjSortMode = modeSel;
+  btnAdjSort.textContent = `Adj order: ${modeSel==='alpha'?'A–Z':'Random'}`;
 
   const current = currentAdj(); // remember current selection to preserve it
   let next = [];
-  if (mode === 'alpha') {
+  if (modeSel === 'alpha') {
     next = [...ADJ_GROUPS_BASE].sort((a,b)=> a.form.localeCompare(b.form,'sl',{sensitivity:'base'}));
   } else {
     next = shuffle(ADJ_GROUPS_BASE);
@@ -378,13 +421,13 @@ function sortAdj(mode){
   requestAnimationFrame(()=>{ adjPos = renderByPos(adjTrack, adjLen, adjPos); updateBadges(); });
 }
 
-function sortNoun(mode){
-  nounSortMode = mode;
-  btnNounSort.textContent = `Noun order: ${mode==='alpha'?'A–Z':'Random'}`;
+function sortNoun(modeSel){
+  nounSortMode = modeSel;
+  btnNounSort.textContent = `Noun order: ${modeSel==='alpha'?'A–Z':'Random'}`;
 
   const current = currentNoun();
   let next = [];
-  if (mode === 'alpha') {
+  if (modeSel === 'alpha') {
     next = [...NOUN_GROUPS_BASE].sort((a,b)=> a.noun.localeCompare(b.noun,'sl',{sensitivity:'base'}));
   } else {
     next = shuffle(NOUN_GROUPS_BASE);
@@ -405,21 +448,61 @@ function buildAll(){
   sortNoun(nounSortMode);
 }
 
-/* ---------- Provided lists loader (nouns/manifest.json) ---------- */
+/* ---------- Language data loader (await before rendering) ---------- */
+async function loadLanguageData(m = mode) {
+  const dir = langDir(m);
+
+  // 1) Load manifest from the language directory (/sl/)
+  let nounsUrl = null;
+  try {
+    const manifestResp = await fetch(langUrl('manifest.json', m), { cache: 'no-store' });
+    if (!manifestResp.ok) throw new Error(`Failed manifest for ${dir}: ${manifestResp.status}`);
+    const manifest = await manifestResp.json();
+
+    // Expect manifest like: { "nouns": "nouns.json" }  (adjectives are static here)
+    nounsUrl = manifest.nouns ? langUrl(manifest.nouns, m) : null;
+  } catch (e) {
+    console.warn('[SL] manifest.json not found or invalid, using NOUNS_START fallback.', e);
+  }
+
+  // 2) Fetch nouns if provided; else use fallback
+  let nounRows = NOUNS_START;
+  if (nounsUrl) {
+    const nounResp = await fetch(nounsUrl, { cache: 'no-store' });
+    if (!nounResp.ok) throw new Error(`Failed nouns for ${dir}: ${nounResp.status}`);
+    nounRows = await nounResp.json();
+  }
+
+  // 3) Replace BASE state entirely (avoid mixing languages)
+  ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW); // unchanged but normalized
+  NOUN_GROUPS_BASE = groupNouns(nounRows);
+
+  // 4) Reset working sets; they'll be rebuilt in buildAll()
+  ADJ_GROUPS = [];
+  NOUN_GROUPS = [];
+  adjLen = nounLen = adjPos = nounPos = 0;
+
+  // 5) Reset prompt & selections
+  clearPromptUI();
+
+  dataLoadedFor = dir;
+}
+
+/* ---------- Provided lists loader (scoped to /sl/nouns/manifest.json) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch(`${ROOT}/nouns/manifest.json`, {cache:'no-cache'});
+    const res = await fetch(`${ROOT}/sl/nouns/manifest.json?v=${APP_VERSION}`, {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');
 
     providedSelect.innerHTML = '';
     for (const it of items){
-      const path = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
-      const label = it.label || (it.file ? it.file : path.split('/').pop());
-      if (!path) continue;
+      const rel = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
+      const label = it.label || (it.file ? it.file : rel.split('/').pop());
+      const url = `${ROOT}/sl/${rel}?v=${APP_VERSION}`;
       const o = document.createElement('option');
-      o.value = `${ROOT}/${path}`;
+      o.value = url;
       o.textContent = label;
       providedSelect.appendChild(o);
     }
@@ -430,7 +513,7 @@ async function loadProvidedIndex(){
     providedSelect.innerHTML = '<option>No provided lists found</option>';
     providedSelect.disabled = true;
     loadProvidedBtn.disabled = true;
-    providedHint.textContent = 'Tip: add nouns/manifest.json to list your CSVs.';
+    providedHint.textContent = 'Tip: add sl/nouns/manifest.json to list your CSVs.';
   }
 }
 
@@ -582,9 +665,17 @@ btnNounSort.addEventListener('click', ()=>{
   sortNoun(nounSortMode==='random' ? 'alpha' : 'random');
 });
 
-/* Build & load lists */
-buildAll();
-loadProvidedIndex();
+/* ---------- Boot: load language data, then build UI ---------- */
+(async function boot(){
+  try {
+    await loadLanguageData(mode);  // <— critical: await data before rendering
+  } catch (e) {
+    console.warn('[SL] loadLanguageData failed, using fallback nouns.', e);
+    // fall through with NOUNS_START
+  }
+  buildAll();          // build reels from the freshly loaded BASE lists
+  loadProvidedIndex(); // optional: enable provided lists located under /sl/nouns/
+})();
 
 /* ---------- PWA: service worker registration with update flow ---------- */
 (function registerSWWithUpdates(){

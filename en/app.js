@@ -1,6 +1,26 @@
 // Resolve repo root even when this page is served from /sl/ or /en/
 const ROOT = location.pathname.replace(/\/(sl|en)(?:\/.*)?$/, '');
 
+// --- language and URL helpers ---
+const APP_VERSION = '2025-10-23-2'; // bump when you deploy
+const MODES = { EN_TO_SL: 'EN>SL', SL_TO_EN: 'SL>EN' };
+
+let mode = MODES.EN_TO_SL;   // default for EN build (prompts in English)
+let dataLoadedFor = null;    // remembers which dir we last loaded
+
+function langDir(m) {
+  return m === MODES.SL_TO_EN ? 'sl' : 'en';
+}
+
+// Build a language-scoped, cache-busted relative URL.
+// Relative (no leading slash) so it works on GitHub Pages under /<repo>/
+function langUrl(relPath, m = mode) {
+  const dir = langDir(m);
+  const q = `v=${encodeURIComponent(APP_VERSION)}`;
+  const sep = relPath.includes('?') ? '&' : '?';
+  return `${dir}/${relPath}${sep}${q}`;
+}
+
 /* ---------- Base adjective forms (flat) ---------- */
 const ADJECTIVES_RAW = [
   { form:"moj",   gender:"m", number:"sg", owner:"my" },
@@ -286,7 +306,7 @@ function updateBadges(){
   btnShowHints.textContent = `Show Hints: ${showHints?'ON':'OFF'}`;
 }
 
-/* ---------- Prompt & feedback ---------- */
+/* ---------- Prompt & feedback (EN prompts) ---------- */
 function ownerLabel(owner){ return owner === 'your-pl' ? 'YOU ALL' : String(owner).toUpperCase(); }
 function featAbbrev(g, n){ return `${g}/${n}`.toLowerCase(); }
 
@@ -365,13 +385,13 @@ function check(){
 }
 
 /* ---------- Sorting logic ---------- */
-function sortAdj(mode){
-  adjSortMode = mode;
-  btnAdjSort.textContent = `Adj order: ${mode==='alpha'?'A–Z':'Random'}`;
+function sortAdj(modeSel){
+  adjSortMode = modeSel;
+  btnAdjSort.textContent = `Adj order: ${modeSel==='alpha'?'A–Z':'Random'}`;
 
   const current = currentAdj(); // remember current selection to preserve it
   let next = [];
-  if (mode === 'alpha') {
+  if (modeSel === 'alpha') {
     next = [...ADJ_GROUPS_BASE].sort((a,b)=> a.form.localeCompare(b.form,'sl',{sensitivity:'base'}));
   } else {
     next = shuffle(ADJ_GROUPS_BASE);
@@ -386,13 +406,13 @@ function sortAdj(mode){
   requestAnimationFrame(()=>{ adjPos = renderByPos(adjTrack, adjLen, adjPos); updateBadges(); });
 }
 
-function sortNoun(mode){
-  nounSortMode = mode;
-  btnNounSort.textContent = `Noun order: ${mode==='alpha'?'A–Z':'Random'}`;
+function sortNoun(modeSel){
+  nounSortMode = modeSel;
+  btnNounSort.textContent = `Noun order: ${modeSel==='alpha'?'A–Z':'Random'}`;
 
   const current = currentNoun();
   let next = [];
-  if (mode === 'alpha') {
+  if (modeSel === 'alpha') {
     next = [...NOUN_GROUPS_BASE].sort((a,b)=> a.noun.localeCompare(b.noun,'sl',{sensitivity:'base'}));
   } else {
     next = shuffle(NOUN_GROUPS_BASE);
@@ -413,21 +433,61 @@ function buildAll(){
   sortNoun(nounSortMode);
 }
 
-/* ---------- Provided lists loader (nouns/manifest.json) ---------- */
+/* ---------- Language data loader (await before rendering) ---------- */
+async function loadLanguageData(m = mode) {
+  const dir = langDir(m);
+
+  // 1) Load manifest from the language directory (/en/)
+  let nounsUrl = null;
+  try {
+    const manifestResp = await fetch(langUrl('manifest.json', m), { cache: 'no-store' });
+    if (!manifestResp.ok) throw new Error(`Failed manifest for ${dir}: ${manifestResp.status}`);
+    const manifest = await manifestResp.json();
+
+    // Expect manifest like: { "nouns": "nouns.json" }  (adjectives are static here)
+    nounsUrl = manifest.nouns ? langUrl(manifest.nouns, m) : null;
+  } catch (e) {
+    console.warn('[EN] manifest.json not found or invalid, using NOUNS_START fallback.', e);
+  }
+
+  // 2) Fetch nouns if provided; else use fallback
+  let nounRows = NOUNS_START;
+  if (nounsUrl) {
+    const nounResp = await fetch(nounsUrl, { cache: 'no-store' });
+    if (!nounResp.ok) throw new Error(`Failed nouns for ${dir}: ${nounResp.status}`);
+    nounRows = await nounResp.json();
+  }
+
+  // 3) Replace BASE state entirely (avoid mixing languages)
+  ADJ_GROUPS_BASE = groupAdjectives(ADJECTIVES_RAW); // unchanged but normalized
+  NOUN_GROUPS_BASE = groupNouns(nounRows);
+
+  // 4) Reset working sets; they'll be rebuilt in buildAll()
+  ADJ_GROUPS = [];
+  NOUN_GROUPS = [];
+  adjLen = nounLen = adjPos = nounPos = 0;
+
+  // 5) Reset prompt & selections
+  clearPromptUI();
+
+  dataLoadedFor = dir;
+}
+
+/* ---------- Provided lists loader (scoped to /en/nouns/manifest.json) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch(`${ROOT}/nouns/manifest.json`, {cache:'no-cache'});
+    const res = await fetch(`${ROOT}/en/nouns/manifest.json?v=${APP_VERSION}`, {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');
 
     providedSelect.innerHTML = '';
     for (const it of items){
-      const path = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
-      const label = it.label || (it.file ? it.file : path.split('/').pop());
-      if (!path) continue;
+      const rel = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
+      const label = it.label || (it.file ? it.file : rel.split('/').pop());
+      const url = `${ROOT}/en/${rel}?v=${APP_VERSION}`;
       const o = document.createElement('option');
-      o.value = `${ROOT}/${path}`;
+      o.value = url;
       o.textContent = label;
       providedSelect.appendChild(o);
     }
@@ -438,7 +498,7 @@ async function loadProvidedIndex(){
     providedSelect.innerHTML = '<option>No provided lists found</option>';
     providedSelect.disabled = true;
     loadProvidedBtn.disabled = true;
-    providedHint.textContent = 'Tip: add nouns/manifest.json to list your CSVs.';
+    providedHint.textContent = 'Tip: add en/nouns/manifest.json to list your CSVs.';
   }
 }
 
@@ -590,63 +650,14 @@ btnNounSort.addEventListener('click', ()=>{
   sortNoun(nounSortMode==='random' ? 'alpha' : 'random');
 });
 
-/* Build & load lists */
-buildAll();
-loadProvidedIndex();
-
-/* ---------- PWA: service worker registration with update flow ---------- */
-(function registerSWWithUpdates(){
-  if (!('serviceWorker' in navigator)) return;
-
-  let refreshing = false;
-
-  function showUpdateToast(onClick){
-    if (document.querySelector('.update-toast')) return;
-    const bar = document.createElement('div');
-    bar.className = 'update-toast';
-    bar.innerHTML = `
-      <span>🔄 An update is available.</span>
-      <button class="btn" id="laterBtn">Later</button>
-      <button class="btn primary" id="applyBtn">Update now</button>
-    `;
-    document.body.appendChild(bar);
-    bar.querySelector('#laterBtn').addEventListener('click', ()=> bar.remove());
-    bar.querySelector('#applyBtn').addEventListener('click', ()=> onClick?.());
+/* ---------- Boot: load language data, then build UI ---------- */
+(async function boot(){
+  try {
+    await loadLanguageData(mode);  // <— critical: await data before rendering
+  } catch (e) {
+    console.warn('[EN] loadLanguageData failed, using fallback nouns.', e);
+    // fall through with NOUNS_START
   }
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
-
-  window.addEventListener('load', async () => {
-    try{
-      const reg = await navigator.serviceWorker.register(`${ROOT}/service-worker.js`);
-      console.log('[SW] registered', reg.scope);
-
-      reg.addEventListener('updatefound', () => {
-        const sw = reg.installing;
-        if (!sw) return;
-        sw.addEventListener('statechange', () => {
-          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateToast(() => {
-              if (reg.waiting) {
-                reg.waiting.postMessage('SKIP_WAITING');
-              } else if (reg.installing && reg.installing.state === 'installed') {
-                reg.installing.postMessage('SKIP_WAITING');
-              }
-            });
-          }
-        });
-      });
-
-      setInterval(() => reg.update().catch(()=>{}), 30 * 60 * 1000);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') reg.update().catch(()=>{});
-      });
-    }catch(err){
-      console.warn('[SW] registration failed', err);
-    }
-  });
+  buildAll();          // build reels from the freshly loaded BASE lists
+  loadProvidedIndex(); // optional: enable provided lists located under /en/nouns/
 })();
