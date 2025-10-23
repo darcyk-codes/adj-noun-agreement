@@ -2,10 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
-  />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Prompter</title>
 
   <style>
@@ -20,16 +18,11 @@
       --frame-min-h: 68vh;
     }
     html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      background: var(--bg);
-      color: var(--text);
+      margin: 0; padding: 0; height: 100%;
+      background: var(--bg); color: var(--text);
       font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
     }
-    .wrap {
-      max-width: 1100px; margin: 0 auto; padding: 20px;
-    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
     header {
       display: flex; align-items: center; justify-content: space-between;
       gap: 12px; margin-bottom: 12px;
@@ -37,7 +30,8 @@
     .title { font-weight: 700; letter-spacing: .2px; }
     .modebar {
       display: flex; gap: 8px; align-items: center; background: var(--card);
-      border: 1px solid var(--border); padding: 6px; border-radius: var(--btn-radius);
+      border: 1px solid var(--border); padding: 6px;
+      border-radius: var(--btn-radius);
     }
     .modebar button {
       background: transparent; color: var(--text);
@@ -47,31 +41,16 @@
     .modebar button.active {
       background: var(--accent); border-color: var(--accent); color: white;
     }
-    .frames {
-      display: grid; grid-template-columns: 1fr; gap: 12px;
-    }
+    .frames { display: grid; grid-template-columns: 1fr; gap: 12px; }
     iframe {
-      width: 100%; min-height: var(--frame-min-h); border: 1px solid var(--border);
-      border-radius: 14px; background: #0a0c12;
+      width: 100%; min-height: var(--frame-min-h);
+      border: 1px solid var(--border); border-radius: 14px;
+      background: #0a0c12;
     }
     .hidden { display: none !important; }
-
-    /* tiny update toast, if you decide to use it later */
-    .update-toast {
-      position: fixed; left: 50%; transform: translateX(-50%);
-      bottom: 16px; background: var(--card); color: var(--text);
-      border: 1px solid var(--border); padding: 10px 12px; border-radius: 12px;
-      display: flex; gap: 10px; align-items: center; z-index: 9999;
-    }
-    .update-toast .btn {
-      background: transparent; color: var(--text);
-      border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; cursor: pointer;
-    }
-    .update-toast .btn.primary {
-      background: var(--accent); border-color: var(--accent); color: #fff;
-    }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <header>
@@ -83,50 +62,56 @@
     </header>
 
     <main class="frames">
-      <!-- NOTE: we attach the version param from switcher.js to avoid stale iframes -->
-      <iframe id="frame-en" title="English to Slovene" tabindex="0" class="hidden" loading="eager"></iframe>
-      <iframe id="frame-sl" title="Slovene to English" tabindex="0" loading="lazy"></iframe>
+      <!-- Version param added dynamically by switcher.js -->
+      <iframe id="frame-en" title="English to Slovene"
+              tabindex="0" class="hidden" loading="eager"></iframe>
+      <iframe id="frame-sl" title="Slovene to English"
+              tabindex="0" loading="lazy"></iframe>
     </main>
   </div>
 
-  <!-- Root-only SW registration (single source of truth) -->
-<script>
-  // TEMP breaker: add ?nosw=1 to the URL to bypass SW entirely
-  if (new URLSearchParams(location.search).has('nosw')) {
-    window.__NO_SW__ = true;
-  }
-</script>
+  <!--  SAFE SW REGISTRATION  -->
+  <script>
+    (function safeSWRegister() {
+      if (!('serviceWorker' in navigator)) return;
 
-<script>
-  (function registerRootSW() {
-    if (window.__NO_SW__) return;     // <— breaker
-    if (!('serviceWorker' in navigator)) return;
+      const SW_VERSION = '2025-10-23-5';
+      let reloaded = sessionStorage.getItem('sw-reloaded') === '1';
 
-    let reloaded = sessionStorage.getItem('sw-reloaded') === '1';
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return;                   // prevent infinite reload
+        reloaded = true;
+        sessionStorage.setItem('sw-reloaded', '1');
+        location.reload();
+      });
 
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloaded) return;           // <— only reload once per tab
-      reloaded = true;
-      sessionStorage.setItem('sw-reloaded', '1');
-      location.reload();
-    });
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register(
+            `./service-worker.js?v=${SW_VERSION}`
+          );
 
-    window.addEventListener('load', async () => {
-      try {
-        const v = '2025-10-23-4';
-        const reg = await navigator.serviceWorker.register(`./service-worker.js?v=${v}`);
-        // Optional: only auto-apply an update once per page load
-        navigator.serviceWorker.addEventListener('message', (e) => {
-          if (e.data === 'SW_WAITING' && reg.waiting && !reloaded) {
-            reg.waiting.postMessage('SKIP_WAITING');
-          }
-        });
-      } catch {}
-    });
-  })();
-</script>
+          // Optional: Listen for messages from SW
+          navigator.serviceWorker.addEventListener('message', (e) => {
+            if (e.data === 'SW_WAITING' && reg.waiting && !reloaded) {
+              // Apply immediately (or show toast instead)
+              reg.waiting.postMessage('SKIP_WAITING');
+            }
+          });
 
-  <!-- Switcher logic -->
+          // Optional: periodic update checks
+          setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().catch(() => {});
+          });
+        } catch (err) {
+          console.warn('[SW] registration failed', err);
+        }
+      });
+    })();
+  </script>
+
+  <!-- MODE SWITCHER -->
   <script src="./switcher.js" defer></script>
 </body>
 </html>

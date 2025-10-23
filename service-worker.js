@@ -1,187 +1,93 @@
-/* service-worker.js — root-safe for GitHub Pages, with sub-app support */
-const VERSION = 'v1.4.6';
-const STATIC_CACHE  = `pmatch-static-${VERSION}`;
-const RUNTIME_CACHE = `pmatch-runtime-${VERSION}`;
+/* service-worker.js — safe, no-loop, cache-busted by query (?v=...) */
 
-/* Resolve repo root even when navigated under /sl/ or /en/ */
-const ROOT = self.location.pathname.replace(/\/(sl|en)\/.*/, '');
+/** Bump this when you deploy **/
+const SW_VERSION = '2025-10-23-5';
+const CACHE_PREFIX = 'prompter';
+const CACHE_STATIC = `${CACHE_PREFIX}-static-${SW_VERSION}`;
 
-/** Build absolute URLs from the SW scope (GitHub Pages safe) */
-const BASE = self.registration.scope; // e.g., https://user.github.io/repo/
-const ABS  = (p) => new URL(p, BASE).toString();
-
-/** App shell to pre-cache (keep small) */
-const PRECACHE_ASSETS = [
-  // Root shell
-  ABS(''),                      // folder URL (GH Pages "index")
-  ABS('index.html'),
-  ABS('styles.css'),
-  ABS('manifest.webmanifest'),
-  ABS('icons/icon-192.png'),
-  ABS('icons/icon-512.png'),
-
-  // Sub-app entry points (so iframes work offline)
-  ABS('sl/'),
-  ABS('sl/index.html'),
-  ABS('en/'),
-  ABS('en/index.html'),
-
-  // JS entry points (leave these even if the root one is absent; cache will skip)
-  ABS('sl/app.js'),
-  ABS('en/app.js'),
-
-  // Shared data index (keep small; CSVs themselves are fetched on demand)
-  ABS('nouns/manifest.json'),
+const STATIC_ASSETS = [
+  // Root shell; keep this small. Do NOT include /en/ or /sl/ HTML here
+  // because those are iframe documents that we want to load fresh via ?v=...
+  './',
+  './index.html',
+  './switcher.js',
+  './styles.css',       // only if it exists at root
+  './icons/icon-192.png',
 ];
 
-/* ---------- Install: pre-cache app shell ---------- */
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_STATIC).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
+  // IMPORTANT: do NOT call skipWaiting() here — we only activate early on explicit request
+});
+
+self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const cache = await caches.open(STATIC_CACHE);
-    // Try to precache each URL, but don't fail the whole install if one is missing
-    await Promise.all(PRECACHE_ASSETS.map(async (url) => {
-      try {
-        const res = await fetch(url, { cache: 'no-store' });
-        if (res && res.ok) {
-          await cache.put(url, res.clone());
-        } else {
-          console.warn('[SW] skip precache (bad status)', url, res && res.status);
-        }
-      } catch (err) {
-        console.warn('[SW] skip precache (fetch error)', url, err);
-      }
-    }));
-    await self.skipWaiting();
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE_STATIC)
+        .map((k) => caches.delete(k))
+    );
+    await self.clients.claim();
   })());
 });
 
-/* ---------- Activate: clean old caches ---------- */
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((k) => k.startsWith('pmatch-') && k !== STATIC_CACHE && k !== RUNTIME_CACHE)
-          .map((k) => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
-  );
-});
-
-/* ---------- Message: support SKIP_WAITING ---------- */
-self.addEventListener('message', (event) => {
-  if (event.data === 'SKIP_WAITING') self.skipWaiting();
-});
-
-/* ---------- Fetch strategies ---------- */
+/**
+ * Fetch strategy:
+ * - JSON/CSV: network-first (fresh data), fallback to cache
+ * - Everything else: stale-while-revalidate (quick + updates silently)
+ * - Never use ignoreSearch:true so ?v= works
+ */
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
 
-  const url  = new URL(req.url);
-  const dest = req.destination;
+  // Only handle same-origin
+  if (url.origin !== location.origin) return;
 
-  // Only handle same-origin requests (skip CDNs/external)
-  if (url.origin !== self.location.origin) return;
+  const isData = /\.(json|csv)$/i.test(url.pathname) || /manifest\.json$/i.test(url.pathname);
 
-  // --- Safety shim: if something still requests /sl/nouns/... or /en/nouns/..., redirect to /nouns/... ---
-  if (url.pathname.includes('/sl/nouns/') || url.pathname.includes('/en/nouns/')) {
-    const rel = (url.pathname.split('/nouns/')[1] || '').replace(/^\/+/, '');
-    const fixedURL = ABS(`nouns/${rel}`);
-    event.respondWith(networkFirst(new Request(fixedURL, { headers: req.headers, mode: req.mode, credentials: req.credentials })));
-    return;
-  }
-
-  // 1) HTML/documents -> Network-first (so deploys show quickly)
-  const isDoc = req.mode === 'navigate' || dest === 'document' || url.pathname.endsWith('/') || url.pathname.endsWith('/index.html');
-  if (isDoc) {
-    event.respondWith(networkFirst(req, /*navFallback*/true));
-    return;
-  }
-
-  // 2) Nouns data (manifest + CSVs) -> Network-first (avoids stale/404)
-  const nounsRoot = new URL('nouns/', BASE).pathname; // "/repo/nouns/"
-  const isNounsJSON = url.pathname === new URL('nouns/manifest.json', BASE).pathname;
-  const isNounsCSV  = url.pathname.startsWith(nounsRoot) && url.pathname.endsWith('.csv');
-  if (isNounsJSON || isNounsCSV) {
+  if (isData) {
     event.respondWith(networkFirst(req));
-    return;
+  } else {
+    event.respondWith(staleWhileRevalidate(req));
   }
-
-  // 3) JS/CSS/Icons/Font -> Stale-while-revalidate
-  if (['script', 'style', 'image', 'font', 'manifest'].includes(dest)) {
-    event.respondWith(staleWhileRevalidate(event, req));
-    return;
-  }
-
-  // 4) Default -> Stale-while-revalidate
-  event.respondWith(staleWhileRevalidate(event, req));
 });
 
-/* ---------------- Strategy helpers ---------------- */
-async function cacheFirst(request) {
-  const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(request, { ignoreVary: true, ignoreSearch: true });
-  if (cached) return cached;
-
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_STATIC);
   try {
-    const res = await fetch(request);
-    if (res && res.ok) cache.put(request, res.clone());
-    return res;
-  } catch (err) {
-    return cached || Response.error();
-  }
-}
-
-async function networkFirst(request, navFallback = false) {
-  const runtime = await caches.open(RUNTIME_CACHE);
-  try {
-    const res = await fetch(request, { cache: 'no-store' });
-    if (res && res.ok && (request.destination === 'document' || isHTMLResponse(res))) {
-      runtime.put(request, res.clone());
+    const fresh = await fetch(request, { cache: 'no-store' });
+    // only cache successful basic responses
+    if (fresh && fresh.ok && fresh.type === 'basic') {
+      cache.put(request, fresh.clone());
     }
-    return res;
+    return fresh;
   } catch (err) {
-    // Try runtime, then any cache
-    const cached = await runtime.match(request) || await caches.match(request);
+    const cached = await cache.match(request, { ignoreSearch: false });
     if (cached) return cached;
-
-    // Friendly fallback for navigation into sub-apps
-    if (navFallback && request.mode === 'navigate') {
-      const p = new URL(request.url).pathname;
-      const shell = await caches.open(STATIC_CACHE);
-      if (p.includes('/sl/')) {
-        const sl = await shell.match(ABS('sl/index.html'));
-        if (sl) return sl;
-      }
-      if (p.includes('/en/')) {
-        const en = await shell.match(ABS('en/index.html'));
-        if (en) return en;
-      }
-      const root = await shell.match(ABS('index.html'));
-      if (root) return root;
-    }
-    return Response.error();
+    throw err;
   }
 }
 
-function staleWhileRevalidate(event, request) {
-  return (async () => {
-    const cache = await caches.open(RUNTIME_CACHE);
-    const cached = await cache.match(request);
-    const network = fetch(request).then((res) => {
-      if (res && res.ok) cache.put(request, res.clone());
-      return res;
-    }).catch(() => null);
-
-    // Refresh in background
-    event.waitUntil(network.catch(() => {}));
-
-    return cached || network || fetch(request);
-  })();
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_STATIC);
+  const cached = await cache.match(request, { ignoreSearch: false });
+  const fetchPromise = fetch(request).then((network) => {
+    if (network && network.ok && network.type === 'basic') {
+      cache.put(request, network.clone());
+    }
+    return network;
+  }).catch(() => cached || Promise.reject());
+  return cached || fetchPromise;
 }
 
-function isHTMLResponse(res) {
-  const ctype = (res.headers.get('content-type') || '').toLowerCase();
-  return ctype.includes('text/html');
-}
+/** Allow the page to explicitly apply a waiting SW (no auto-loops) */
+self.addEventListener('message', (event) => {
+  const msg = event.data;
+  if (msg === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
