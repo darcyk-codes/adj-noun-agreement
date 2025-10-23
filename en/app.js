@@ -441,17 +441,17 @@ function rerenderReelsForMode(){
 
 /* ---------- Data loading (manifest + nouns) ---------- */
 async function loadLanguageData() {
-  // 1) Load manifest from this iframe folder (e.g., /en/manifest.json)
+  // 1) Load manifest from the root (e.g., ../manifest.json)
   let nounsUrl = null;
   try {
-    const manifestResp = await fetch(langUrl('manifest.json'), { cache: 'no-store' });
+    const manifestResp = await fetch(langUrl('../manifest.json'), { cache: 'no-store' });
     if (!manifestResp.ok) throw new Error(`Failed manifest: ${manifestResp.status}`);
     const manifest = await manifestResp.json();
 
     // Expect: { "nouns": "nouns.json" } — adjectives are static in this app
     nounsUrl = manifest.nouns ? langUrl(manifest.nouns) : null;
   } catch (e) {
-    console.warn('[EN] manifest.json not found/invalid, using built-in fallback.', e);
+    console.warn('manifest.json not found/invalid, using built-in fallback.', e);
   }
 
   // 2) Fetch nouns (if present) else use fallback
@@ -478,7 +478,7 @@ async function loadLanguageData() {
 /* ---------- Provided lists (scoped to /en/) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch(langUrl('nouns/manifest.json'), {cache:'no-cache'});
+    const res = await fetch(langUrl('../nouns/manifest.json'), {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');

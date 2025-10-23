@@ -490,17 +490,17 @@ function rerenderReelsForMode(){
 async function loadLanguageData(m = mode) {
   const dir = langDir(m);
 
-  // 1) Load manifest from the language directory (/sl/)
+  // 1) Load manifest from the root directory ()
   let nounsUrl = null;
   try {
-    const manifestResp = await fetch(langUrl('manifest.json', m), { cache: 'no-store' });
+    const manifestResp = await fetch(langUrl('../manifest.json', m), { cache: 'no-store' });
     if (!manifestResp.ok) throw new Error(`Failed manifest for ${dir}: ${manifestResp.status}`);
     const manifest = await manifestResp.json();
 
     // Expect manifest like: { "nouns": "nouns.json" }  (adjectives are static here)
     nounsUrl = manifest.nouns ? langUrl(manifest.nouns, m) : null;
   } catch (e) {
-    console.warn('[SL] manifest.json not found or invalid, using NOUNS_START fallback.', e);
+    console.warn('manifest.json not found or invalid, using NOUNS_START fallback.', e);
   }
 
   // 2) Fetch nouns if provided; else use fallback
@@ -529,7 +529,7 @@ async function loadLanguageData(m = mode) {
 /* ---------- Provided lists loader (scoped to /sl/nouns/manifest.json) ---------- */
 async function loadProvidedIndex(){
   try{
-    const res = await fetch(`${ROOT}/sl/nouns/manifest.json?v=${APP_VERSION}`, {cache:'no-cache'});
+    const res = await fetch(`${ROOT}/nouns/manifest.json?v=${APP_VERSION}`, {cache:'no-cache'});
     if(!res.ok) throw new Error('manifest.json not found');
     const items = await res.json();
     if (!Array.isArray(items) || !items.length) throw new Error('no items');
@@ -538,7 +538,7 @@ async function loadProvidedIndex(){
     for (const it of items){
       const rel = (it.file && it.file.startsWith('nouns/')) ? it.file : `nouns/${it.file}`;
       const label = it.label || (it.file ? it.file : rel.split('/').pop());
-      const url = `${ROOT}/sl/${rel}?v=${APP_VERSION}`;
+      const url = `${ROOT}/${rel}?v=${APP_VERSION}`;
       const o = document.createElement('option');
       o.value = url;
       o.textContent = label;
@@ -551,7 +551,7 @@ async function loadProvidedIndex(){
     providedSelect.innerHTML = '<option>No provided lists found</option>';
     providedSelect.disabled = true;
     loadProvidedBtn.disabled = true;
-    providedHint.textContent = 'Tip: add sl/nouns/manifest.json to list your CSVs.';
+    providedHint.textContent = 'Tip: add nouns/manifest.json to list your CSVs.';
   }
 }
 

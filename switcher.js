@@ -2,7 +2,7 @@
 // Expects #frame-en, #frame-sl, #btn-en, #btn-sl to exist.
 
 (function () {
-  const VERSION = '2025-10-23-4';           // bump when deploying
+  const VERSION = '2025-10-23-5';           // bump when deploying
   const LS_KEY  = 'prompter:mode';          // persisted mode
   const MODES   = { EN: 'en', SL: 'sl' };   // URL ?mode=en|sl
 
