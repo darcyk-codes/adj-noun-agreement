@@ -1,6 +1,6 @@
 (function () {
   // 🔴 BUMP ONLY HERE
-  const VERSION = '2025-10-23-10';
+  const VERSION = '2025-10-23-11';
   window.__APP_VERSION = VERSION;
 
   const MODES = { EN: 'en', SL: 'sl' };

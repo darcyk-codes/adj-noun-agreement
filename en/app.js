@@ -86,106 +86,53 @@ function mod(n,m){ return ((n % m) + m) % m; }
 
 
 function groupAdjectives(rows){
-  // Consolidate by surface form only; merge owners and (gender,number) variants
+  // Consolidate by surface form; merge owners and (gender, number) variants
   const norm = (s)=> (s||"").normalize('NFC').trim().toLowerCase();
   const map = new Map();
-
   for(const r of rows||[]){
     if(!r || !r.form) continue;
     const key = norm(r.form);
     if(!map.has(key)){
-      map.set(key, { form: r.form, owners: [], variants: [] });
+      map.set(key, { form: r.form, owner: r.owner, owners: r.owner ? [r.owner] : [], variants: [] });
     }
     const e = map.get(key);
-
-    // keep first-seen casing for display
+    // Preserve first-seen display form
     if (!e.form) e.form = r.form;
-
-    // owners
+    // Merge owners
     if (r.owner && !e.owners.includes(r.owner)) e.owners.push(r.owner);
-
-    // variants
+    if (!e.owner && r.owner) e.owner = r.owner;
+    // Merge variants uniquely
     const g = (r.gender||'').trim();
     const n = (r.number||'').trim();
     if (g && n && !e.variants.some(v=>v.gender===g && v.number===n)){
       e.variants.push({ gender:g, number:n });
     }
   }
-
-  // Stable sort of variants within each entry
   const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
-  const out = Array.from(map.values()).map(e=>{
-    e.variants.sort((a,b)=> (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
-    return e;
-  });
-
-  // Sort entries by display form
-  out.sort((a,b)=> a.form.localeCompare(b.form, undefined, {sensitivity:'base'}));
-  return out;
-}
-  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
-  return Array.from(map.values()).map(x=>{
-    const seen=new Set();
+  const out = Array.from(map.values()).map(x=>{
+    const seen = new Set();
     x.variants = x.variants
-      .filter(v=>{ const k=`${v.gender}|${v.number}`; if(seen.has(k)) return false; seen.add(k); return true; })
+      .filter(v=>{ const k=v.gender+'|'+v.number; if(seen.has(k)) return false; seen.add(k); return true; })
       .sort((a,b)=> (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
     return x;
   });
+  out.sort((a,b)=> a.form.localeCompare(b.form, undefined, {sensitivity:'base'}));
+  return out;
 }
-
 
 function groupNouns(rows){
-  // Consolidate nouns by surface spelling (case-insensitive, NFC, trimmed)
-  const norm = (s)=> (s||'').normalize('NFC').trim().toLowerCase();
-  const map = new Map();
-  const conflicts = [];
-  const gOrder = { m:0, f:1, n:2 };
-  const nOrder = { sg:0, pl:1, du:2 };
-
-  for(const r of rows || []){
+  const map=new Map(), conflicts=[];
+  const gOrder={m:0,f:1,n:2}, nOrder={sg:0,pl:1,du:2};
+  for(const r of rows){
     if(!r || !r.noun) continue;
-    const key = norm(r.noun);
+    const key=r.noun.normalize('NFC');
     if(!map.has(key)){
-      map.set(key, {
-        noun: r.noun,                // keep first-seen casing
-        english: r.english || '',
-        variants: []
-      });
+      map.set(key, { noun:key, english:r.english, variants:[{gender:r.gender, number:r.number}] });
+    } else {
+      const e=map.get(key);
+      if(e.english !== r.english) conflicts.push({noun:key, first:e.english, other:r.english});
+      e.variants.push({gender:r.gender, number:r.number});
     }
-    const e = map.get(key);
-
-    // Track English gloss; warn on conflicting non-empty alternatives
-    if (r.english && e.english && r.english !== e.english){
-      conflicts.push({ noun: e.noun, first: e.english, other: r.english });
-      // keep first, ignore others (consistent with previous behavior)
-    } else if (!e.english && r.english){
-      e.english = r.english;
-    }
-
-    const g = (r.gender || '').trim();
-    const n = (r.number || '').trim();
-    if (g && n && !e.variants.some(v => v.gender === g && v.number === n)){
-      e.variants.push({ gender: g, number: n });
-    }
-  }
-
-  const groups = Array.from(map.values()).map(x => {
-    const seen = new Set();
-    x.variants = x.variants
-      .filter(v => { const k = v.gender + '|' + v.number; if (seen.has(k)) return false; seen.add(k); return true; })
-      .sort((a,b) => (gOrder[a.gender]-gOrder[b.gender]) || (nOrder[a.number]-nOrder[b.number]));
-    return x;
-  });
-
-  if (conflicts.length){
-    const msg = conflicts.slice(0,6).map(c => `• “${c.noun}”: using "${c.first}", ignoring "${c.other}"`).join('\\n');
-    alert('Some nouns had conflicting English glosses. Using the first value found.\n' + msg + (conflicts.length>6?'\n…':''));
-  }
-
-  // Sort by display form (case-insensitive, locale-aware)
-  groups.sort((a,b) => a.noun.localeCompare(b.noun, undefined, { sensitivity:'base' }));
-  return groups;
-}
   }
   const groups=Array.from(map.values()).map(x=>{
     const seen=new Set();
@@ -269,12 +216,13 @@ function clearPromptUI(){
 function reelsShowEnglish(){ return mode === MODES.SL_TO_EN; }
 
 function ownerLabelEN(owner){
-  return owner === 'your-pl' ? 'your (pl.)' : String(owner);
+  return owner === 'your-pl' ? 'your (pl.)' : String(owner || '').trim();
 }
 
 function displayAdj(adj){
   if (!adj) return '—';
-  return reelsShowEnglish() ? ownerLabelEN((adj.owner ?? (adj.owners && adj.owners[0]) ?? '')) : adj.form;
+  const own = (adj.owner ?? (Array.isArray(adj.owners) && adj.owners[0]) ?? '');
+  return reelsShowEnglish() ? ownerLabelEN(own) : adj.form;
 }
 
 function displayNoun(group){
